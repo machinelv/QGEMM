@@ -11,12 +11,11 @@
 // CUDA runtime
 #include <cuda_runtime.h>
 #include <cuda_bf16.h>
-#include <cuda_int8.h>
 
 // Custom GEMM headers
 #include "gemm.h"
 // Test configuration and utility headers
-#include "timer.h"
+#include "simple_timer.h"
 #include "test_config.h"
 
 int main() {
@@ -54,16 +53,16 @@ int main() {
 
     
     std::vector<std::pair<std::string, 
-        std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t)>>> bf16_functions = {
-            {"cutlass_gemm_test", cutlass_gemm_test<nv_bfloat16, nv_bfloat16>},
+        std::function<void(__nv_bfloat16*, size_t, __nv_bfloat16*, size_t, __nv_bfloat16*, size_t, size_t, size_t, size_t)>>> bf16_functions = {
+            {"cutlass_gemm_test", cutlass_gemm_test<__nv_bfloat16, __nv_bfloat16>},
         };
 
     std::vector<std::pair<std::string, 
-        std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t)>>> int8_functions = {
+        std::function<void(int8_t*, size_t, int8_t*, size_t, int8_t*, size_t, size_t, size_t, size_t)>>> int8_functions = {
             {"cutlass_gemm_test", cutlass_gemm_test<int8_t, int8_t>},
         };
 
-    GEMMBenchmark<nv_bfloat16, nv_bfloat16> bf16_benchmark(configs_bf16, bf16_functions);
+    GEMMBenchmark<__nv_bfloat16, __nv_bfloat16> bf16_benchmark(configs_bf16, bf16_functions);
     GEMMBenchmark<int8_t, int8_t> int8_benchmark(configs_int8, int8_functions);
 
     bf16_benchmark.run_benchmark();

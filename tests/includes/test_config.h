@@ -1,13 +1,17 @@
 #pragma once
 
-
 #include <iostream>
 #include <vector>
-#include <omp.h>
+#include <functional>
+#include <random>
+#include <iomanip>
+#include <cmath>
+#include <memory>
 
 #include <cuda_runtime.h>
 
 #include "timer.h"
+#include "gemm.h"
 
 // Test configuration for SM80 architecture
 struct TestConfig {
@@ -24,21 +28,13 @@ struct TestConfig {
           benchmark_runs(bench), tolerance(tol), seed(s){}
 };
 
-template<typename typeIn, typename typeOut, typename ElementAccumulator = typeOut>
+template<typename typeIn, typename typeOut>
 struct CustomGEMMFunction {
     std::string name;
-    std::function<void(typeIn*, typeIn*, typeOut*, size_t, size_t, size_t)> func;
+    std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t, size_t)> func;
 
     CustomGEMMFunction(const std::string& n, decltype(func) f) 
         : name(n), func(f) {}
-
-    void add_config(const TestConfig& config) {
-        configs.push_back(config);
-    }
-
-    void add_configs(const std::vector<TestConfig>& new_configs) {
-        configs.insert(configs.end(), new_configs.begin(), new_configs.end());
-    }
 
     void operator () (typeIn* A, size_t ldA, typeIn* B, size_t ldB, typeOut* C, size_t ldC, size_t M, size_t N, size_t K) const {
         if (func) {

@@ -52,3 +52,16 @@ void cutlass_gemm_test(
         std::cerr << "CUTLASS GEMM failed" << std::endl;
     }
 }
+
+// Explicit template instantiations
+template void cutlass_gemm_test<__nv_bfloat16, __nv_bfloat16>(
+    __nv_bfloat16* A, size_t ldA,
+    __nv_bfloat16* B, size_t ldB, 
+    __nv_bfloat16* C, size_t ldC,
+    size_t M, size_t N, size_t K);
+
+template void cutlass_gemm_test<int8_t, int8_t>(
+    int8_t* A, size_t ldA,
+    int8_t* B, size_t ldB, 
+    int8_t* C, size_t ldC,
+    size_t M, size_t N, size_t K);

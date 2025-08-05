@@ -54,3 +54,22 @@ class KernelTimerScoped {
 
     ~KernelTimerScoped() { timer->stop_timer(stream); }
 };
+
+// Timer utility class
+class Timer {
+public:
+    Timer() : start_(std::chrono::high_resolution_clock::now()) {}
+    
+    double elapsed() {
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start_);
+        return duration.count() / 1000.0; // Return milliseconds
+    }
+    
+    void reset() {
+        start_ = std::chrono::high_resolution_clock::now();
+    }
+
+private:
+    std::chrono::high_resolution_clock::time_point start_;
+};

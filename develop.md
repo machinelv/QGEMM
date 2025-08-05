@@ -16,7 +16,6 @@
   - Implementation: Python
   - Metrics: GEMM performance, accuracy, and efficiency
 
-
 ## Time line
 
 - [ ] Evaluation

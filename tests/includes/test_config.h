@@ -50,8 +50,9 @@ struct CustomGEMMFunction {
 template<typename typeIn, typename typeOut>
 class GEMMBenchmark{
 private:
-    std::vector<std::pair<std::string, 
-        CustomGEMMFunction<typeIn, typeIn, typeOut>>> custom_functions;
+    std::vector<CustomGEMMFunction<typeIn, typeOut>> custom_functions;
+
+    CustomGEMMFunction<typeIn, typeOut> reference_function;
     std::vector<TestConfig> configs;
 
     /**
@@ -144,9 +145,12 @@ private:
         
         return {max_error, is_correct};
     }
-    
+
+
+    */
+
     void print_result(const std::string& name, double time_ms, const TestConfig& config, 
-                     double max_error, bool is_correct) {
+                    double max_error, bool is_correct) {
         if (time_ms < 0) {
             std::cout << std::left << std::setw(25) << name << "FAILED" << std::endl;
             return;
@@ -161,39 +165,39 @@ private:
         double bandwidth = (bytes / (time_ms * 1e-3)) / 1e9;
         
         std::cout << std::left << std::setw(25) << name
-                  << std::fixed << std::setprecision(3) << std::setw(12) << time_ms
-                  << std::setw(12) << tflops
-                  << std::setw(15) << bandwidth
-                  << std::setw(12) << (is_correct ? "PASS" : "FAIL")
-                  << std::scientific << std::setprecision(2) << max_error << std::endl;
+                    << std::fixed << std::setprecision(3) << std::setw(12) << time_ms
+                    << std::setw(12) << tflops
+                    << std::setw(15) << bandwidth
+                    << std::setw(12) << (is_correct ? "PASS" : "FAIL")
+                    << std::scientific << std::setprecision(2) << max_error << std::endl;
     }
 
     void cleanup_memory(typeIn* d_A, typeIn* d_B, typeOut* d_C, typeOut* d_D, typeOut* d_ref,
-                       typeIn* h_A, typeIn* h_B, typeOut* h_C) {
+                    typeIn* h_A, typeIn* h_B, typeOut* h_C, typeOut* h_ref) {
         delete[] h_A;
         delete[] h_B;
         delete[] h_C;
+        delete[] h_ref;
         cudaFree(d_A);
         cudaFree(d_B);
         cudaFree(d_C);
         cudaFree(d_D);
         cudaFree(d_ref);
     }
-    */
+
+
 public:
     GEMMBenchmark(const std::vector<TestConfig>& new_configs) : configs(new_configs) {};
 
     GEMMBenchmark(const std::vector<TestConfig>& new_configs, 
-        std::vector<std::pair<std::string, 
-        std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t)>>> new_functions) : configs(new_configs), custom_functions(new_functions) {};
+        std::vector<CustomGEMMFunction<typeIn, typeIn, typeOut>> new_functions) : configs(new_configs), custom_functions(new_functions) {};
 
 
     void reference_gemm(typeIn* A, size_t ldA,
                         typeIn* B, size_t ldB, 
                         typeOut* C, size_t ldC,
                         size_t M, size_t N, size_t K) {
-        // Call the reference GEMM implementation
-        cutlass_gemm_test<typeIn, typeOut>(A, ldA, B, ldB, C, ldC, M, N, K);
+        
     }
 
     void add_custom_function(const std::string& name, 
@@ -201,10 +205,23 @@ public:
         custom_functions.emplace_back(name, func);
     }
 
-    void add_custom_function(std::vector<std::pair<std::string, 
-        std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t)>>> new_functions) {
+    void add_custom_function(std::vector<CustomGEMMFunction<typeIn, typeIn, typeOut>> new_functions) {
         custom_functions.insert(custom_functions.end(), new_functions.begin(), new_functions.end());
     }
+
+    void add_custom_function(CustomGEMMFunction<typeIn, typeIn, typeOut> func) {
+        custom_functions.push_back(func);
+    }
+
+    void set_reference_function(std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t)> func) {
+        reference_function = CustomGEMMFunction<typeIn, typeIn, typeOut>("reference", func);
+    }
+
+    void set_reference_function(CustomGEMMFunction<typeIn, typeIn, typeOut> ref_function) {
+        reference_function = ref_function;
+    }
+
+    
 
     bool check_correctness(typeOut* C, typeOut* ref_C, size_t M, size_t N, double tolerance) {
         // Check correctness of the GEMM result
@@ -293,7 +310,12 @@ public:
                 double max_error = 0.0; // Placeholder for max error calculation
                 bool is_correct = true; // Placeholder for correctness check
                 typeOut* ref_C = new typeOut[M * N];
-                reference_gemm(d_A, ldA, d_B, ldB, ref_C, ldC, M, N, K);
+
+                Timer timer_ref;
+                timer_ref.start();
+                reference_function(d_A, ldA, d_B, ldB, d_ref_C, ldC, M, N, K);
+                double elapsed_ms_ref = timer_ref.stop();
+                double avg_time_ref = elapsed_ms_ref / config.benchmark_runs;
 
                 cudaMemcpy(h_C, d_C, M * N * sizeof(typeOut), cudaMemcpyDeviceToHost);
                 cudaMemcpy(h_ref_C, d_ref_C, M * N * sizeof(typeOut), cudaMemcpyDeviceToHost);
@@ -310,9 +332,7 @@ public:
             }
 
             // Clean up
-            delete[] A;
-            delete[] B;
-            delete[] C;
+            cleanup_memory(d_A, d_B, d_C, d_ref_C, h_A, h_B, h_C, h_ref_C);
         }
 
     }

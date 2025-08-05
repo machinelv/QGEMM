@@ -20,7 +20,6 @@ struct GEMM_Config {
     size_t GROUP_SIZE_M      = GROUP_M;
     size_t STAGE_NUMS        = STAGE;
 };
-
 struct WMMA_Config {
     static constexpr size_t WARP_TILE_SIZE_M  = 32;    // wmma number of rows in a warp
     static constexpr size_t WARP_TILE_SIZE_N  = 32;    // wmma number of columns in a warp
@@ -29,10 +28,12 @@ struct WMMA_Config {
     static constexpr size_t WMMA_TILE_SIZE_K   = 32;
 }
 
+
 constexpr GEMM_Config<256, 256, 64, 2, 0> gemmconf_256x256x64;
 constexpr GEMM_Config<128, 128, 64, 2, 0> gemmconf_128x128x64;
 constexpr GEMM_Config<64, 128, 64, 2, 0> gemmconf_64x128x64;
 constexpr GEMM_Config<64, 64, 64, 2, 0> gemmconf_64x64x64;
+
 
 using gemmconf=GEMM_Config<0,0,0,0,0>;
 
@@ -117,7 +118,9 @@ template <typename T_INPUT, typename T_OUTPUT,
             size_t WARP_TILE_SIZE_M, size_t WARP_TILE_SIZE_N, 
             size_t WMMA_TILE_SIZE_M, size_t WMMA_TILE_SIZE_N, size_t WMMA_TILE_SIZE_K,
             size_t GROUP_SIZE_M>
-__global__ void GEMM_kernel(const T_INPUT* A, const T_INPUT* B, T_OUTPUT* C, 
+__global__ void FP8_GEMM_kernel(const T_INPUT* A, const T_INPUT* B, 
+                    const float* A_scale, const float* B_scale, 
+                    T_OUTPUT* C, 
                     const size_t M, const size_t N, const size_t K
                 )
 {
@@ -242,7 +245,7 @@ __global__ void GEMM_kernel(const T_INPUT* A, const T_INPUT* B, T_OUTPUT* C,
 
 
 template<size_t BLOCK_TILE_SIZE_M, size_t BLOCK_TILE_SIZE_N, size_t BLOCK_TILE_SIZE_K, size_t GROUP_SIZE_M>
-void launch_bf16_kernel(const float8_fnuz_t* A, const float8_fnuz_t* B,
+void launch_fp8_kernel(const float8_fnuz_t* A, const float8_fnuz_t* B, const float* as, const float* bs,
                        bfloat16_t* C, size_t M, size_t N, size_t K) 
 {
 
@@ -251,7 +254,32 @@ void launch_bf16_kernel(const float8_fnuz_t* A, const float8_fnuz_t* B,
     constexpr size_t WARP_NUM{WARP_NUM_M * WARP_NUM_N};
     constexpr size_t THREAD_NUM{WARP_NUM * WARP_SIZE};
 
-    GEMM_kernel<bfloat16_t, bfloat16_t, 
+#ifdef DEBUG
+    std::cout << "Launching kernel with BLOCK_TILE_SIZE_M: " << BLOCK_TILE_SIZE_M
+         << ", BLOCK_TILE_SIZE_N: " << BLOCK_TILE_SIZE_N
+         << ", BLOCK_TILE_SIZE_K: " << BLOCK_TILE_SIZE_K
+         << ", GROUP_SIZE_M: " << GROUP_SIZE_M
+         << ", WARP_NUM_M: " << WARP_NUM_M
+         << ", WARP_NUM_N: " << WARP_NUM_N
+         << ", THREAD_NUM: " << THREAD_NUM
+         << std::endl;
+
+    const float8_fnuz_t test[16] = {1,1,1,1,1,1,1,1, 
+                              1,1,1,1,1,1,1,1};
+
+    int4 test_int4 = *reinterpret_cast<int4 const*>(&test[0]);
+    union {
+        float8_fnuz_t fp8_vals[16];
+        int4 int4_vals;
+    } test_union;
+    test_union.int4_vals = test_int4;
+    for (size_t i = 0; i < 2; ++i) {
+        std::cout << "test_union.fp8_vals[" << i << "]: " << static_cast<float8_fnuz_t>(test_union.fp8_vals[i]) << std::endl;
+    }
+#endif // DEBUG
+    // static_assert(THREAD_NUM <= 1024, "THREAD_NUM must be less than or equal to 1024");
+
+    FP8_GEMM_kernel<float8_fnuz_t, bfloat16_t, 
                     BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K, 
                     gemmconf::WARP_TILE_SIZE_M, gemmconf::WARP_TILE_SIZE_N, 
                     gemmconf::WMMA_TILE_SIZE_M, gemmconf::WMMA_TILE_SIZE_N, gemmconf::WMMA_TILE_SIZE_K, 
@@ -276,7 +304,7 @@ Returns:
     Tensor containing output in bf16
 */
 template<size_t BLOCK_TILE_SIZE_M, size_t BLOCK_TILE_SIZE_N, size_t GROUP_SIZE_M>
-void select_BLOCK_TILE_SIZE_K(const float8_fnuz_t* A, const float8_fnuz_t* B,
+void select_BLOCK_TILE_SIZE_K(const float8_fnuz_t* A, const float8_fnuz_t* B, const float* as, const float* bs,
                        bfloat16_t* C, size_t M, size_t N, size_t K)
 {
     constexpr std::array<size_t, 3> BLOCK_TILE_SIZE_K_LIST = {128, 64, 32};
@@ -299,13 +327,30 @@ void select_BLOCK_TILE_SIZE_K(const float8_fnuz_t* A, const float8_fnuz_t* B,
 
 
 template<size_t BLOCK_TILE_SIZE_M, size_t GROUP_SIZE_M>
-void select_BLOCK_TILE_SIZE_N(const float8_fnuz_t* A, const float8_fnuz_t* B,
+void select_BLOCK_TILE_SIZE_N(const float8_fnuz_t* A, const float8_fnuz_t* B, const float* as, const float* bs,
                        bfloat16_t* C, size_t M, size_t N, size_t K)
 {
-   
+    constexpr std::array<size_t, 4> BLOCK_TILE_SIZE_N_LIST = {64, 32};
+
+    // if (M / N > 6) {
+    //     select_BLOCK_TILE_SIZE_K<256, 64, GROUP_SIZE_M>(A, B, as, bs, C, M, N, K);
+    // } else if (N / M > 6) {
+    //     select_BLOCK_TILE_SIZE_K<64, 256, GROUP_SIZE_M>(A, B, as, bs, C, M, N, K);
+    // } else 
+    if (N % BLOCK_TILE_SIZE_N_LIST[0] == 0) { // 256
+        select_BLOCK_TILE_SIZE_K<BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N_LIST[0], GROUP_SIZE_M>(A, B, as, bs, C, M, N, K);
+    } else if (N % BLOCK_TILE_SIZE_N_LIST[1] == 0) { // 128
+        select_BLOCK_TILE_SIZE_K<BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N_LIST[1], GROUP_SIZE_M>(A, B, as, bs, C, M, N, K);
+    // } else if (N % BLOCK_TILE_SIZE_N_LIST[2] == 0) { // 64
+    //     select_BLOCK_TILE_SIZE_K<BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N_LIST[2], GROUP_SIZE_M>(A, B, as, bs, C, M, N, K);
+    // } else if (N % BLOCK_TILE_SIZE_N_LIST[3] == 0) { // 32
+    //     select_BLOCK_TILE_SIZE_K<BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N_LIST[3], GROUP_SIZE_M>(A, B, as, bs, C, M, N, K);
+    } else {
+        throw std::runtime_error("N (" + std::to_string(N) + ") is not divisible by any predefined BLOCK_TILE_SIZE_N in the list.");   
+    }
 }
 
-void select_BLOCK_TILE_SIZE_M(const float8_fnuz_t* A, const float8_fnuz_t* B,
+void select_BLOCK_TILE_SIZE_M(const float8_fnuz_t* A, const float8_fnuz_t* B, const float* as, const float* bs,
                        bfloat16_t* C, size_t M, size_t N, size_t K)
 {
     constexpr std::array<size_t, 4> BLOCK_TILE_SIZE_M_LIST = {128, 64, 32};
@@ -334,13 +379,13 @@ void bf16_mm(torch::Tensor a, torch::Tensor b, torch::Tensor as, torch::Tensor b
     as.data_ptr<float>(), bs.data_ptr<float>(), static_cast<bfloat16_t*>(c.data_ptr()), m, n, k);
 }
 
-void int8_mm(torch::Tensor a, torch::Tensor b, torch::Tensor as, torch::Tensor bs, torch::Tensor c) 
+void fp8_mm(torch::Tensor a, torch::Tensor b, torch::Tensor as, torch::Tensor bs, torch::Tensor c) 
 {
     const size_t m = a.size(0);
     const size_t n = b.size(0);
     const size_t k = a.size(1); 
 
-    select_BLOCK_TILE_SIZE_M(static_cast<float8_t*>(a.data_ptr()), static_cast<float8_t*>(b.data_ptr()), 
+    select_BLOCK_TILE_SIZE_M(static_cast<float8_fnuz_t*>(a.data_ptr()), static_cast<float8_fnuz_t*>(b.data_ptr()), 
     as.data_ptr<float>(), bs.data_ptr<float>(), static_cast<bfloat16_t*>(c.data_ptr()), m, n, k);
 }
 

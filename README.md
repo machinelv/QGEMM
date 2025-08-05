@@ -1,6 +1,8 @@
-This repository implements a mix precision GEMM kernel in 8 bits and 16 bits bitwidth precision. The input matrix will be quantized to 8 bits or 16 bits, and the output matrix will be a higher precision such as 16 bits or 32 bits.
+This repository implements a normal GEMM kernel and a mix precision GEMM kernel in 8 bits and 16 bits bitwidth precision. The input matrix will be quantized to 8 bits or 16 bits, and the output matrix will be a higher precision such as 16 bits or 32 bits.
 
-Different from the $C=A\times B$, we implement the following formula:
+The normal gemm kernel is $$C = A \times B$$. 
+
+The mix precision GEMM kernel is different from the normal gemm kernel. Its formular is:
 $$C = A\circ Q_A \times B\circ Q_B$$
 , where $Q_A$ and $Q_B$ are quantization coefficients.
 

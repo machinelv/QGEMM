@@ -1,126 +1,67 @@
 #!/bin/bash
 
-# QGEMM Build Script
-# Usage: ./build.sh [OPTIONS]
-# 
-# Options:
-#   --vendor=AMD|NVIDIA     Target vendor (default: auto-detect)
-#   --arch=ARCH             Target GPU architecture 
-#                          AMD: gfx942 (CDNA3)
-#                          NVIDIA: 80,89 (SM80,SM89)
-#   --tests                 Build test programs
-#   --test-kernels          Build test kernel files (files starting with test_)
-#   --clean                 Clean build directory before building
-#   --help                  Show this help message
+# CUDA GEMM Benchmark Build Script
+# This script builds the CUDA GEMM benchmark test framework
 
-set -e
+set -e  # Exit on any error
 
-# Default values
-VENDOR=""
-ARCH=""
-BUILD_TESTS="OFF"
-BUILD_TEST_KERNELS="OFF"
-CLEAN_BUILD=false
-BUILD_DIR="build"
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --vendor=*)
-            VENDOR="${1#*=}"
-            shift
-            ;;
-        --arch=*)
-            ARCH="${1#*=}"
-            shift
-            ;;
-        --tests)
-            BUILD_TESTS="ON"
-            shift
-            ;;
-        --test-kernels)
-            BUILD_TEST_KERNELS="ON"
-            shift
-            ;;
-        --clean)
-            CLEAN_BUILD=true
-            shift
-            ;;
-        --help)
-            echo "QGEMM Build Script"
-            echo ""
-            echo "Usage: ./build.sh [OPTIONS]"
-            echo ""
-            echo "Options:"
-            echo "  --vendor=AMD|NVIDIA     Target vendor (default: auto-detect)"
-            echo "  --arch=ARCH             Target GPU architecture"
-            echo "                          AMD: gfx942 (CDNA3)"
-            echo "                          NVIDIA: 80,89 (SM80,SM89)"
-            echo "  --tests                 Build test programs"
-            echo "  --test-kernels          Build test kernel files (files starting with test_)"
-            echo "  --clean                 Clean build directory before building"
-            echo "  --help                  Show this help message"
-            echo ""
-            echo "Examples:"
-            echo "  ./build.sh --vendor=NVIDIA --arch=80,89 --tests"
-            echo "  ./build.sh --vendor=AMD --arch=gfx942 --test-kernels"
-            echo "  ./build.sh --clean --tests --test-kernels"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Use --help for usage information"
-            exit 1
-            ;;
-    esac
-done
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}  CUDA GEMM Benchmark Build Script     ${NC}"
+echo -e "${GREEN}========================================${NC}"
 
-# Clean build directory if requested
-if [ "$CLEAN_BUILD" = true ]; then
-    echo "Cleaning build directory..."
-    rm -rf $BUILD_DIR
-    exit 0
+# Check if we're in the right directory
+if [ ! -f "CMakeLists.txt" ]; then
+    echo -e "${RED}Error: CMakeLists.txt not found. Please run this script from the tests directory.${NC}"
+    exit 1
 fi
+
+# Check CUDA installation
+if ! command -v nvcc &> /dev/null; then
+    echo -e "${RED}Error: NVCC not found. Please ensure CUDA is properly installed.${NC}"
+    exit 1
+fi
+
+echo -e "${YELLOW}CUDA version:${NC}"
+nvcc --version
 
 # Create build directory
-mkdir -p $BUILD_DIR
-cd $BUILD_DIR
-
-# Prepare CMake arguments
-CMAKE_ARGS="-DBUILD_SHARED_LIBS=ON -DBUILD_TESTS=$BUILD_TESTS -DBUILD_TEST_KERNELS=$BUILD_TEST_KERNELS"
-
-if [ ! -z "$VENDOR" ]; then
-    CMAKE_ARGS="$CMAKE_ARGS -DTARGET_VENDOR=$VENDOR"
+BUILD_DIR="build"
+if [ -d "$BUILD_DIR" ]; then
+    echo -e "${YELLOW}Removing existing build directory...${NC}"
+    rm -rf "$BUILD_DIR"
 fi
 
-if [ ! -z "$ARCH" ]; then
-    CMAKE_ARGS="$CMAKE_ARGS -DTARGET_GPU_ARCH=$ARCH"
-fi
-
-echo "Configuring with CMake..."
-echo "Arguments: $CMAKE_ARGS"
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
 
 # Configure with CMake
-cmake .. $CMAKE_ARGS
+echo -e "${YELLOW}Configuring project with CMake...${NC}"
+cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CUDA_ARCHITECTURES="80;89" \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
-echo "Building..."
-make -j
+# Build the project
+echo -e "${YELLOW}Building project...${NC}"
+make -j$(nproc)
 
-echo ""
-echo "Build completed successfully!"
-echo "Output files are in: $(pwd)/"
-echo ""
-echo "Libraries:"
-echo "  - libqgemm.so (main GEMM library)"
-echo "  - qgemm_python.so (Python module)"
-if [ "$BUILD_TESTS" = "ON" ]; then
-    echo "Tests:"
-    echo "  - qgemm_test (C++ test executable)"
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}  Build completed successfully!        ${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${YELLOW}Executable location: ${BUILD_DIR}/bin/cuda_benchmark${NC}"
+    echo -e "${YELLOW}To run the benchmark:${NC}"
+    echo -e "${YELLOW}  cd ${BUILD_DIR}${NC}"
+    echo -e "${YELLOW}  ./bin/cuda_benchmark${NC}"
+else
+    echo -e "${RED}========================================${NC}"
+    echo -e "${RED}  Build failed!                        ${NC}"
+    echo -e "${RED}========================================${NC}"
+    exit 1
 fi
-if [ "$BUILD_TEST_KERNELS" = "ON" ]; then
-    echo "Test Kernels:"
-    echo "  - libqgemm_test_kernels.so (test kernel library)"
-    echo "  - qgemm_test_kernels_python.so (Python test kernel module)"
-fi
-echo ""
-echo "To install, run: make install"

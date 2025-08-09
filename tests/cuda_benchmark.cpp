@@ -6,6 +6,7 @@
 #include <random>
 #include <memory>
 #include <string>
+#include <cstdint>
 #include <cmath>
 
 // CUDA runtime
@@ -51,19 +52,20 @@ int main() {
         TestConfig(4096, 4096, 4096, "int8"),
     };
 
-    
-    std::vector<std::pair<std::string, 
-        std::function<void(__nv_bfloat16*, size_t, __nv_bfloat16*, size_t, __nv_bfloat16*, size_t, size_t, size_t, size_t)>>> bf16_functions = {
-            {"cutlass_gemm_test", cutlass_gemm_test<__nv_bfloat16, __nv_bfloat16>},
+
+    std::vector<CustomGEMMFunction<__nv_bfloat16, __nv_bfloat16>> bf16_functions = {
+            CustomGEMMFunction<__nv_bfloat16, __nv_bfloat16>("cutlass_gemm_test", cutlass_gemm_test<__nv_bfloat16, __nv_bfloat16>),
         };
 
-    std::vector<std::pair<std::string, 
-        std::function<void(int8_t*, size_t, int8_t*, size_t, int8_t*, size_t, size_t, size_t, size_t)>>> int8_functions = {
-            {"cutlass_gemm_test", cutlass_gemm_test<int8_t, int8_t>},
+    std::vector<CustomGEMMFunction<int8_t, int8_t>> int8_functions = {
+            CustomGEMMFunction<int8_t, int8_t>("cutlass_gemm_test", cutlass_gemm_test<int8_t, int8_t>),
         };
 
     GEMMBenchmark<__nv_bfloat16, __nv_bfloat16> bf16_benchmark(configs_bf16, bf16_functions);
     GEMMBenchmark<int8_t, int8_t> int8_benchmark(configs_int8, int8_functions);
+
+    bf16_benchmark.set_reference_function(CustomGEMMFunction<__nv_bfloat16, __nv_bfloat16>("cutlass_gemm_test", cutlass_gemm_test<__nv_bfloat16, __nv_bfloat16>));
+    int8_benchmark.set_reference_function(CustomGEMMFunction<int8_t, int8_t>("cutlass_gemm_test", cutlass_gemm_test<int8_t, int8_t>));
 
     bf16_benchmark.run_benchmark();
     int8_benchmark.run_benchmark();

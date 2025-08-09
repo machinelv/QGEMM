@@ -10,7 +10,7 @@
 
 #include <cuda_runtime.h>
 
-#include "timer.h"
+#include "simple_timer.h"
 #include "gemm.h"
 
 // Test configuration for SM80 architecture
@@ -23,19 +23,22 @@ struct TestConfig {
     double tolerance;
 
     TestConfig(size_t m, size_t n, size_t k, const std::string& prec,
-               size_t warmup = 5, size_t bench = 20, double tol = 1e-2, int s = 42)
+               size_t warmup = 5, size_t bench = 10, double tol = 1e-2, int s = 42)
         : M(m), N(n), K(k), precision(prec), warmup_runs(warmup),
-          benchmark_runs(bench), tolerance(tol), seed(s){}
+          benchmark_runs(bench), seed(s), tolerance(tol){}
 };
 
 template<typename typeIn, typename typeOut>
-struct CustomGEMMFunction {
+class CustomGEMMFunction {
+public:
     std::string name;
     std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t, size_t)> func;
-
+    
+    // Default constructor
+    CustomGEMMFunction() : name(""), func(nullptr) {}
+    
     CustomGEMMFunction(const std::string& n, decltype(func) f) 
         : name(n), func(f) {}
-
     void operator () (typeIn* A, size_t ldA, typeIn* B, size_t ldB, typeOut* C, size_t ldC, size_t M, size_t N, size_t K) const {
         if (func) {
             func(A, ldA, B, ldB, C, ldC, M, N, K);
@@ -44,7 +47,6 @@ struct CustomGEMMFunction {
         }
     }
 };
-
 
 
 template<typename typeIn, typename typeOut>
@@ -149,28 +151,6 @@ private:
 
     */
 
-    void print_result(const std::string& name, double time_ms, const TestConfig& config, 
-                    double max_error, bool is_correct) {
-        if (time_ms < 0) {
-            std::cout << std::left << std::setw(25) << name << "FAILED" << std::endl;
-            return;
-        }
-        
-        // Calculate TFLOPS
-        double ops = 2.0 * config.M * config.N * config.K; // GEMM operations
-        double tflops = (ops / (time_ms * 1e-3)) / 1e12;
-        
-        // Calculate bandwidth (rough estimate)
-        size_t bytes = (config.M * config.K + config.K * config.N + config.M * config.N) * sizeof(ElementA);
-        double bandwidth = (bytes / (time_ms * 1e-3)) / 1e9;
-        
-        std::cout << std::left << std::setw(25) << name
-                    << std::fixed << std::setprecision(3) << std::setw(12) << time_ms
-                    << std::setw(12) << tflops
-                    << std::setw(15) << bandwidth
-                    << std::setw(12) << (is_correct ? "PASS" : "FAIL")
-                    << std::scientific << std::setprecision(2) << max_error << std::endl;
-    }
 
     void cleanup_memory(typeIn* d_A, typeIn* d_B, typeOut* d_C, typeOut* d_D, typeOut* d_ref,
                     typeIn* h_A, typeIn* h_B, typeOut* h_C, typeOut* h_ref) {
@@ -186,12 +166,77 @@ private:
     }
 
 
+    double run_func(const CustomGEMMFunction<typeIn, typeOut>& func, 
+                    typeIn* d_A, size_t ldA,
+                    typeIn* d_B, size_t ldB,
+                    typeOut* d_C, size_t ldC,
+                    const TestConfig& config) {
+        size_t M = config.M;
+        size_t N = config.N;
+        size_t K = config.K;
+        size_t warmup = config.warmup_runs;
+        size_t bench = config.benchmark_runs;
+    
+        // Warmup
+        for (size_t i = 0; i < warmup; ++i) {
+            func(d_A, ldA, d_B, ldB, d_C, ldC, M, N, K);
+        }
+        // Benchmark
+        Timer timer;
+        timer.start();
+        for (size_t i = 0; i < bench; ++i) {
+            func(d_A, ldA, d_B, ldB, d_C, ldC, M, N, K);
+        }
+        timer.stop();
+        double elapsed_ms = timer.stop();
+        double avg_time = elapsed_ms / bench;
+
+        return avg_time;
+    }
+
+    void print_result(const std::string& name, double time_ms, const TestConfig& config,
+                    double max_error, bool is_correct, double ref_time_ms) {
+        if (time_ms < 0) {
+            std::cout << std::left << std::setw(25) << name << "FAILED" << std::endl;
+            return;
+        }
+        size_t M = config.M;
+        size_t N = config.N;
+        size_t K = config.K;
+        double ops = 2.0 * M * N * K; // GEMM operations
+        double tflops = (ops / (time_ms * 1e-3)) / 1e12; // Convert to TFLOPS
+        double bandwidth = ( (M * K + K * N + M * N) * sizeof(typeIn) / (time_ms * 1e-3) ) / 1e9; // GB/s
+        double speedup = ref_time_ms / time_ms;
+        
+        std::cout << std::left << std::setw(25) << name
+                    << std::fixed << std::setprecision(3) << std::setw(12) << time_ms
+                    << std::setw(12) << tflops
+                    << std::setw(15) << bandwidth
+                    << std::setw(12) << (is_correct ? "PASS" : "FAIL")
+                    << std::setw(16) << std::scientific << std::setprecision(2) << max_error 
+                    << std::setw(16) << std::scientific << std::setprecision(2) << speedup 
+                    << std::endl;
+    }
+
+    std::pair<bool, double> check_correctness(typeOut* C, typeOut* ref_C, size_t M, size_t N, double tolerance) {
+        // Check correctness of the GEMM result
+        double max_error = 0.0;
+        for (size_t i = 0; i < M * N; ++i) {
+            double error = std::abs(static_cast<double>(C[i]) - static_cast<double>(ref_C[i]));
+            max_error = std::max(max_error, error);
+        }
+        return {max_error < tolerance, max_error};
+    }
+
 public:
-    GEMMBenchmark(const std::vector<TestConfig>& new_configs) : configs(new_configs) {};
+    GEMMBenchmark(const std::vector<TestConfig> new_configs){
+        configs = new_configs;
+    };
 
-    GEMMBenchmark(const std::vector<TestConfig>& new_configs, 
-        std::vector<CustomGEMMFunction<typeIn, typeIn, typeOut>> new_functions) : configs(new_configs), custom_functions(new_functions) {};
-
+    GEMMBenchmark(const std::vector<TestConfig> new_configs, std::vector<CustomGEMMFunction<typeIn, typeOut>> new_functions) {
+        configs = new_configs;
+        custom_functions = new_functions;
+    };
 
     void reference_gemm(typeIn* A, size_t ldA,
                         typeIn* B, size_t ldB, 
@@ -201,61 +246,52 @@ public:
     }
 
     void add_custom_function(const std::string& name, 
-                             std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t)> func) {
+                             std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t, size_t)> func) {
         custom_functions.emplace_back(name, func);
     }
 
-    void add_custom_function(std::vector<CustomGEMMFunction<typeIn, typeIn, typeOut>> new_functions) {
+    void add_custom_function(std::vector<CustomGEMMFunction<typeIn, typeOut>> new_functions) {
         custom_functions.insert(custom_functions.end(), new_functions.begin(), new_functions.end());
     }
 
-    void add_custom_function(CustomGEMMFunction<typeIn, typeIn, typeOut> func) {
+    void add_custom_function(CustomGEMMFunction<typeIn, typeOut> func) {
         custom_functions.push_back(func);
     }
 
-    void set_reference_function(std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t)> func) {
-        reference_function = CustomGEMMFunction<typeIn, typeIn, typeOut>("reference", func);
+    void set_reference_function(std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t, size_t)> func) {
+        reference_function = CustomGEMMFunction<typeIn, typeOut>("reference", func);
     }
 
-    void set_reference_function(CustomGEMMFunction<typeIn, typeIn, typeOut> ref_function) {
+    void set_reference_function(CustomGEMMFunction<typeIn, typeOut> ref_function) {
         reference_function = ref_function;
     }
 
-    
 
-    bool check_correctness(typeOut* C, typeOut* ref_C, size_t M, size_t N, double tolerance) {
-        // Check correctness of the GEMM result
-        double max_error = 0.0;
-        #pragma omp parallel for reduction(max:max_error)
-        for (size_t i = 0; i < M * N; ++i) {
-            double error = std::abs(static_cast<double>(C[i]) - static_cast<double>(ref_C[i]));
-            max_error = std::max(max_error, error);
-        }
-        return max_error < tolerance;
-    }
+
 
     void run_benchmark() {
-        std::cout << "\n=== GEMM Benchmark ===" << std::endl;
-        std::cout << "Problem size: M=" << config.M << ", N=" << config.N << ", K=" << config.K << std::endl;
-        std::cout << "Precision: " << config.precision << std::endl;
-        std::cout << "Warmup runs: " << config.warmup_runs << std::endl;
-        std::cout << "Benchmark runs: " << config.benchmark_runs << std::endl;
-        std::cout << std::string(90, '=') << std::endl;
-        
-        // Print header
-        std::cout << std::left << std::setw(25) << "Function" 
+        for (const auto& config : configs) {
+            std::cout << "\n=== GEMM Benchmark ===" << std::endl;
+            std::cout << "Problem size: M=" << config.M << ", N=" << config.N << ", K=" << config.K << std::endl;
+            std::cout << "Precision: " << config.precision << std::endl;
+            std::cout << "Warmup runs: " << config.warmup_runs << std::endl;
+            std::cout << "Benchmark runs: " << config.benchmark_runs << std::endl;
+
+            // Print header
+            std::cout << std::string(90, '=') << std::endl;
+            std::cout << std::left << std::setw(25) << "Function" 
                   << std::setw(12) << "Time(ms)"
                   << std::setw(12) << "TFLOPS"
                   << std::setw(15) << "Bandwidth(GB/s)"
                   << std::setw(12) << "Correctness"
-                  << std::setw(15) << "Max Error" << std::endl;
-        std::cout << std::string(90, '-') << std::endl;
-
-        for (const auto& config : configs) {
+                  << std::setw(16) << "Max Error" 
+                  << std::setw(16) << "Speedup" 
+                  << std::endl;
+            std::cout << std::string(90, '-') << std::endl;
             size_t M = config.M;
             size_t N = config.N;
             size_t K = config.K;
-            int rand_seed = config.seed;
+            // int rand_seed = config.seed; // For future use if needed
             
             // Allocate memory and initialize data
             typeIn *h_A, *h_B, *h_C, *h_ref_C;
@@ -289,50 +325,26 @@ public:
             cudaMemcpy(d_C, h_C, M * N * sizeof(typeOut), cudaMemcpyHostToDevice);
             cudaMemcpy(d_ref_C, h_ref_C, M * N * sizeof(typeOut), cudaMemcpyHostToDevice);
 
+            double avg_time_ref = run_func(reference_function, d_A, ldA, d_B, ldB, d_ref_C, ldC, config);
+            cudaMemcpy(h_ref_C, d_ref_C, M * N * sizeof(typeOut), cudaMemcpyDeviceToHost);
+            print_result(reference_function.name, avg_time_ref, config, 0.0, true, avg_time_ref);
+            
             for (const auto& func : custom_functions) {
-                // Warmup
-                for (size_t i = 0; i < config.warmup_runs; ++i) {
-                    func(d_A, ldA, d_B, ldB, d_C, ldC, M, N, K);
-                }
-                // Benchmark
-                Timer timer;
-                timer.start();
-                for (size_t i = 0; i < config.benchmark_runs; ++i) {
-                    func(d_A, ldA, d_B, ldB, d_C, ldC, M, N, K);
-                }
-                double elapsed_ms = timer.stop();
-                double avg_time = elapsed_ms / config.benchmark_runs;
-
-                // Calculate TFLOPS
-                double tflops = (2.0 * M * N * K) / (avg_time * 1e9); // TFLOPS = 2 * M * N * K * 1e-12 
-
-                // Check correctness                
-                double max_error = 0.0; // Placeholder for max error calculation
-                bool is_correct = true; // Placeholder for correctness check
-                typeOut* ref_C = new typeOut[M * N];
-
-                Timer timer_ref;
-                timer_ref.start();
-                reference_function(d_A, ldA, d_B, ldB, d_ref_C, ldC, M, N, K);
-                double elapsed_ms_ref = timer_ref.stop();
-                double avg_time_ref = elapsed_ms_ref / config.benchmark_runs;
-
+                double avg_time = run_func(func, d_A, ldA, d_B, ldB, d_C, ldC, config);
                 cudaMemcpy(h_C, d_C, M * N * sizeof(typeOut), cudaMemcpyDeviceToHost);
-                cudaMemcpy(h_ref_C, d_ref_C, M * N * sizeof(typeOut), cudaMemcpyDeviceToHost);
 
-                is_correct = check_correctness(h_C, h_ref_C, M, N, config.tolerance);
-                max_error = 0.0; // Calculate max error if needed
+                bool is_correct = true;
+                double max_error = 0.0;
+                auto pair = check_correctness(h_C, h_ref_C, M, N, config.tolerance);
+                is_correct = pair.first;
+                max_error = pair.second;
 
-                if (!is_correct) {
-                    std::cerr << "Error: GEMM function " << func.name << " failed correctness check." << std::endl;
-                } else {
-                    // Print results
-                    print_result(func.name, avg_time, config, max_error, is_correct);
-                }
+                // Print results
+                print_result(func.name, avg_time, config, max_error, is_correct, avg_time_ref);
             }
-
+            std::cout << std::string(90, '=') << std::endl;
             // Clean up
-            cleanup_memory(d_A, d_B, d_C, d_ref_C, h_A, h_B, h_C, h_ref_C);
+            cleanup_memory(d_A, d_B, d_C, d_ref_C, d_ref_C, h_A, h_B, h_C, h_ref_C);
         }
 
     }

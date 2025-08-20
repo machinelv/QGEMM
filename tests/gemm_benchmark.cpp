@@ -140,10 +140,10 @@ public:
                 // Test vendor library
                 if (config.precision == "fp16") {
                     double vendor_time = benchmark_vendor_gemm(config);
-#ifdef TEST_ON_CUDA
+#ifdef USE_CUDA
                     print_results("cuBLAS", config, vendor_time);
 #endif
-#ifdef TEST_ON_HIP
+#ifdef USE_HIP
                     print_results("rocBLAS", config, vendor_time);
 #endif
                 }

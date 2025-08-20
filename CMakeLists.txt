@@ -5,6 +5,17 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
+
+# Include directories
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/includes
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/include
+    ${CUDAToolkit_INCLUDE_DIRS}
+)
+
+if(USE_CUDA)
+message(STATUS "Building with CUDA support")
 # Project configuration for CUDA
 project(CUDA_GEMM_Benchmark LANGUAGES CXX CUDA)
 
@@ -17,26 +28,19 @@ set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 # CUDA architecture settings
-set(CMAKE_CUDA_ARCHITECTURES "80;89" CACHE STRING "CUDA architectures")
+set(CMAKE_CUDA_ARCHITECTURES "80" CACHE STRING "CUDA architectures")
 
 # Find packages
 find_package(CUDAToolkit REQUIRED)
 
 # Define preprocessor macro
-add_definitions(-DTEST_ON_CUDA)
-
-# Include directories
-include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/includes
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/include
-    ${CUDAToolkit_INCLUDE_DIRS}
-)
+add_definitions(-DUSE_CUDA)
 
 # Make CUTLASS optional
 find_path(CUTLASS_INCLUDE_DIR
     NAMES cutlass/cutlass.h
     PATHS
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/cutlass/include
         /usr/local/include
         /opt/cutlass/include
     NO_DEFAULT_PATH
@@ -62,6 +66,14 @@ endif()
 set(GEMM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/gemm/test_cutlass_gemm.cu
 )
+
+# Use file(GLOB) to properly find the architecture-specific files
+file(GLOB ARCH_SPECIFIC_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/gemm/sm${CMAKE_CUDA_ARCHITECTURES}_*.cu"
+)
+
+# Add the architecture-specific sources to GEMM_SOURCES
+list(APPEND GEMM_SOURCES ${ARCH_SPECIFIC_SOURCES})
 
 # Create a library for GEMM functions
 add_library(gemm_lib ${GEMM_SOURCES})
@@ -97,7 +109,6 @@ target_link_libraries(cuda_benchmark
     CUDA::cublas
 )
 
-
 # Compiler-specific options
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(cuda_benchmark PRIVATE
@@ -128,3 +139,14 @@ message(STATUS "CUDA Architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "CUDA Standard: ${CMAKE_CUDA_STANDARD}")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
+
+endif() # if(USE_CUDA)
+
+
+if(USE_HIP)
+
+
+
+
+
+endif()

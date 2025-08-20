@@ -1,5 +1,9 @@
 #pragma once
-#ifdef TEST_ON_CUDA
+#ifdef USE_CUDA
+#include <cuda_fp16.h>
+#include <cuda_fp8.h>
+
+
 #define __FP8_TYPE __nv_fp8_e4m3
 #define __FP8x4_TYPE __nv_fp8x4_e4m3
 #define __BF16_TYPE __nv_bfloat16

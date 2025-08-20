@@ -1,8 +1,10 @@
-#ifdef TEST_ON_CUDA
+#ifdef USE_CUDA
+#include <cuda_runtime.h>
 #include <mma.h>
 
 #include <cuda_fp16.h>
 #include <cuda_fp8.h>
+#include <cuda_bf16.h>
 
 namespace wmma = nvcuda::wmma;
 
@@ -40,3 +42,8 @@ namespace wmma = rocwmma;
 
 #endif
 
+using wmma::matrix_a;
+using wmma::matrix_b;
+using wmma::accumulator;
+using wmma::col_major;
+using wmma::row_major;

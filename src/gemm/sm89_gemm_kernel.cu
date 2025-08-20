@@ -35,7 +35,7 @@ constexpr GEMM_Config<64, 128, 64, 2, 0> gemmconf_64x128x64;
 constexpr GEMM_Config<64, 64, 64, 2, 0> gemmconf_64x64x64;
 
 
-using gemmconf=GEMM_Config<0,0,0,0,0>;
+
 
 template <typename T, typename T_OUTPUT,
             size_t BLOCK_TILE_SIZE_M, size_t BLOCK_TILE_SIZE_N, size_t BLOCK_TILE_SIZE_K,

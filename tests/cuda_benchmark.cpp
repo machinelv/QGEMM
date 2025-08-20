@@ -13,6 +13,8 @@
 #include <cuda_runtime.h>
 #include <cuda_bf16.h>
 
+
+
 // Custom GEMM headers
 #include "gemm.h"
 // Test configuration and utility headers
@@ -55,6 +57,7 @@ int main() {
 
     std::vector<CustomGEMMFunction<__nv_bfloat16, __nv_bfloat16>> bf16_functions = {
             CustomGEMMFunction<__nv_bfloat16, __nv_bfloat16>("cutlass_gemm_test", cutlass_gemm_test<__nv_bfloat16, __nv_bfloat16>),
+            CustomGEMMFunction<__nv_bfloat16, __nv_bfloat16>("GEMM_kernel_v1", GEMM_kernel_v1<__nv_bfloat16, __nv_bfloat16>)
         };
 
     std::vector<CustomGEMMFunction<int8_t, int8_t>> int8_functions = {
@@ -66,6 +69,7 @@ int main() {
 
     bf16_benchmark.set_reference_function(CustomGEMMFunction<__nv_bfloat16, __nv_bfloat16>("cutlass_gemm_test", cutlass_gemm_test<__nv_bfloat16, __nv_bfloat16>));
     int8_benchmark.set_reference_function(CustomGEMMFunction<int8_t, int8_t>("cutlass_gemm_test", cutlass_gemm_test<int8_t, int8_t>));
+    
 
     bf16_benchmark.run_benchmark();
     int8_benchmark.run_benchmark();

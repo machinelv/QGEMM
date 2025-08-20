@@ -5,6 +5,8 @@
 
 set -e  # Exit on any error
 
+GPU_ARCH=$1
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -43,8 +45,9 @@ cd "$BUILD_DIR"
 # Configure with CMake
 echo -e "${YELLOW}Configuring project with CMake...${NC}"
 cmake .. \
+    -DUSE_CUDA=ON \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_CUDA_ARCHITECTURES="80;89" \
+    -DCMAKE_CUDA_ARCHITECTURES="$GPU_ARCH" \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 # Build the project

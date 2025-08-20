@@ -1,4 +1,5 @@
 #pragma once
+#include "common.h"
 #include "gpu_lib.h"
 
 namespace gemm_kernel{

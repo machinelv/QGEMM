@@ -28,13 +28,16 @@ set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 # CUDA architecture settings
+if (CMAKE_CUDA_ARCHITECTURES STREQUAL "")
 set(CMAKE_CUDA_ARCHITECTURES "80" CACHE STRING "CUDA architectures")
+endif()
 
 # Find packages
 find_package(CUDAToolkit REQUIRED)
 
 # Define preprocessor macro
 add_definitions(-DUSE_CUDA)
+add_definitions(-DCUDA_SM${CMAKE_CUDA_ARCHITECTURES})
 
 # Make CUTLASS optional
 find_path(CUTLASS_INCLUDE_DIR

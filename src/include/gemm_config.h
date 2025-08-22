@@ -20,7 +20,7 @@ struct WMMA_BF16_Config {
     static constexpr size_t WMMA_TILE_SIZE_N   = 16;
     static constexpr size_t WMMA_TILE_SIZE_K   = 16;
 };
-constexpr GEMM_Config config_128_128_64_1_1{128, 128, 64, 1, 1};
+constexpr GEMM_Config config_128_128_64_1_1{128, 128, 64, 1, 2};
 
 } // sm80
 } // gemm_kernel

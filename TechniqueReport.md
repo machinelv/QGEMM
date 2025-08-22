@@ -9,10 +9,10 @@ This is a technique report for this GEMM repository, which implements both norma
 The SM80 kernel is designed to leverage the capabilities of the NVIDIA Ampere architecture for efficient matrix multiplication. The input matrix precision is bf16 while the output's is fp32.
 
 - V1: tensor core instructions, no swizzling.
-- V2: tensor core instructions, asynchronize smem storing.
-- V3: tensor core instructions, asynchronize smem storing, swizzling.
-- V4: tensor core instructions, asynchronize smem storing, swizzling, split-K
-- V5: tensor core instructions, asynchronize smem storing, swizzling, split-K, pipeline-K
+- V2: tensor core instructions, asynchronize smem operator.
+- V3: tensor core instructions, asynchronize smem operator, swizzling.
+- V4: tensor core instructions, asynchronize smem operator, swizzling, split-K
+- V5: tensor core instructions, asynchronize smem operator, swizzling, split-K, pipeline-K
 
 
 ### V1 
@@ -20,6 +20,10 @@ The SM80 kernel is designed to leverage the capabilities of the NVIDIA Ampere ar
 The V1 is a simple version of GEMM. It uses the techniques below:
 - Tensor core instructions
 - Vectorized Memory Fetching
+
+https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html?highlight=mma#wmma-description
+
+
 
 The performance is:
 - TFLOPS
@@ -43,3 +47,33 @@ The performance is:
 | M=8192, N=4096, K=2048 | 0.21x | 1.00x | 0.10x |
 | M=8192, N=8192, K=8192 | 0.14x | 0.99x | 0.06x |
 
+### V2
+
+The V2 version 
+
+#### Asynchronize Memory Operators
+
+https://docs.nvidia.com/cuda/parallel-thread-execution/#half-precision-comparison-instructions
+
+`cp.async`: Initiates an asynchronous copy operation from one state space to another.
+
+```asm
+cp.async.ca.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
+                         [dst], [src], cp-size{, src-size}{, cache-policy} ;
+cp.async.cg.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
+                         [dst], [src], 16{, src-size}{, cache-policy} ;
+cp.async.ca.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
+                         [dst], [src], cp-size{, ignore-src}{, cache-policy} ;
+cp.async.cg.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
+                         [dst], [src], 16{, ignore-src}{, cache-policy} ;
+
+.level::cache_hint =     { .L2::cache_hint }
+.level::prefetch_size =  { .L2::64B, .L2::128B, .L2::256B }
+cp-size =                { 4, 8, 16 }
+```
+
+
+The difference between `ca` and `cg` is:
+
+- `ca`: The default cache updating method. Update cache at all levels.
+- `cg`: Cache at global level. Use ld.cg to cache loads only globally, bypassing the L1 cache, and cache only in the L2 cache.

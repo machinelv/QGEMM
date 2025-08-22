@@ -60,7 +60,8 @@ int main() {
     std::vector<CustomGEMMFunction<__nv_bfloat16, float>> bf16_functions = {
             CustomGEMMFunction<__nv_bfloat16, float>("cutlass_gemm_test", cutlass_gemm_test<__nv_bfloat16, float>),
             CustomGEMMFunction<__nv_bfloat16, float>("cublas_gemm_test", cublas_gemm_test<__nv_bfloat16, float>),
-            CustomGEMMFunction<__nv_bfloat16, float>("GEMM_kernel_v1", GEMM_kernel_v1<__nv_bfloat16, float>)
+            CustomGEMMFunction<__nv_bfloat16, float>("GEMM_kernel_v1", GEMM_kernel_v1<__nv_bfloat16, float>),
+            CustomGEMMFunction<__nv_bfloat16, float>("GEMM_kernel_v2", GEMM_kernel_v1<__nv_bfloat16, float>)
         };
 
     std::vector<CustomGEMMFunction<int8_t, int8_t>> int8_functions = {

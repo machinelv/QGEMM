@@ -85,7 +85,7 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_transposed(
         T elements[NUM_VECTOR_UNITS];
     };
 
-    // TODO(lyuqizheng): The realization below is used for col-major matrix, change it to row-major
+    
     for (size_t load_idx{0U}; load_idx < (BLOCK_TILE_SIZE_K * VECTORIZED_BLOCK_TILE_SIZE_M + THREAD_NUM - 1) / THREAD_NUM; load_idx ++) {
         // size_t A_block_tile_K_id{(thread_id + load_idx * THREAD_NUM) / VECTORIZED_BLOCK_TILE_SIZE_M};
         // size_t A_block_tile_M_id{(thread_id + load_idx * THREAD_NUM) % VECTORIZED_BLOCK_TILE_SIZE_M * NUM_VECTOR_UNITS};
@@ -98,9 +98,6 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_transposed(
         VectorAccess A_row_vector_vals;
 
         A_row_vector_vals.vec = *reinterpret_cast<VECTOR_TYPE const*>(&A[A_M_id * K + A_K_id]);
-        // if (A_block_tile_K_id < BLOCK_TILE_SIZE_K && A_block_tile_M_id < BLOCK_TILE_SIZE_M) {
-        //     *reinterpret_cast<VECTOR_TYPE*>(&A_T_block_tile[A_block_tile_K_id * BLOCK_TILE_SIZE_M + A_block_tile_M_id]) = A_row_vector_vals.vec;
-        // }
         for (size_t i = 0; i < NUM_VECTOR_UNITS; ++i) {
             if (A_block_tile_K_id < BLOCK_TILE_SIZE_K && A_block_tile_M_id < BLOCK_TILE_SIZE_M) {
                 A_T_block_tile[(A_block_tile_K_id + i) * BLOCK_TILE_SIZE_M + A_block_tile_M_id] = A_row_vector_vals.elements[i];
@@ -139,6 +136,7 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_transposed_
     static_assert(sizeof(VECTOR_TYPE) % sizeof(T) == 0, "VECTOR_TYPE must be a multiple of T size");
 
     constexpr size_t NUM_VECTOR_UNITS{sizeof(VECTOR_TYPE) / sizeof(T)};
+    constexpr size_t VECTORIZED_BLOCK_TILE_SIZE_K{BLOCK_TILE_SIZE_K / NUM_VECTOR_UNITS};
     constexpr size_t VECTORIZED_BLOCK_TILE_SIZE_N{BLOCK_TILE_SIZE_N / NUM_VECTOR_UNITS};
     constexpr size_t VECTORIZED_BLOCK_TILE_SIZE_M{BLOCK_TILE_SIZE_M / NUM_VECTOR_UNITS};
 
@@ -148,19 +146,24 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_transposed_
         VECTOR_TYPE vec;
         T elements[NUM_VECTOR_UNITS];
     };
+
     
     for (size_t load_idx{0U}; load_idx < (BLOCK_TILE_SIZE_K * VECTORIZED_BLOCK_TILE_SIZE_M + THREAD_NUM - 1) / THREAD_NUM; load_idx ++) {
-        size_t A_block_tile_K_id{(thread_id + load_idx * THREAD_NUM) / VECTORIZED_BLOCK_TILE_SIZE_M};
-        size_t A_block_tile_M_id{(thread_id + load_idx * THREAD_NUM) % VECTORIZED_BLOCK_TILE_SIZE_M * NUM_VECTOR_UNITS};
+        // size_t A_block_tile_K_id{(thread_id + load_idx * THREAD_NUM) / VECTORIZED_BLOCK_TILE_SIZE_M};
+        // size_t A_block_tile_M_id{(thread_id + load_idx * THREAD_NUM) % VECTORIZED_BLOCK_TILE_SIZE_M * NUM_VECTOR_UNITS};
+        size_t A_block_tile_M_id{(thread_id + load_idx * THREAD_NUM) / VECTORIZED_BLOCK_TILE_SIZE_K};
+        size_t A_block_tile_K_id{(thread_id + load_idx * THREAD_NUM) % VECTORIZED_BLOCK_TILE_SIZE_K * NUM_VECTOR_UNITS};
 
         size_t A_M_id{A_block_tile_M_id + block_tile_start_m};
         size_t A_K_id{A_block_tile_K_id + block_tile_start_k};
 
         VectorAccess A_row_vector_vals;
 
-        A_row_vector_vals.vec = *reinterpret_cast<VECTOR_TYPE const*>(&A[A_M_id + A_K_id * M]);
-        if (A_block_tile_K_id < BLOCK_TILE_SIZE_K && A_block_tile_M_id < BLOCK_TILE_SIZE_M) {
-            *reinterpret_cast<VECTOR_TYPE*>(&A_T_block_tile[A_block_tile_K_id * BLOCK_TILE_SIZE_M + A_block_tile_M_id]) = A_row_vector_vals.vec;
+        A_row_vector_vals.vec = *reinterpret_cast<VECTOR_TYPE const*>(&A[A_M_id * K + A_K_id]);
+        for (size_t i = 0; i < NUM_VECTOR_UNITS; ++i) {
+            if (A_block_tile_K_id < BLOCK_TILE_SIZE_K && A_block_tile_M_id < BLOCK_TILE_SIZE_M) {
+                A_T_block_tile[(A_block_tile_K_id + i) * BLOCK_TILE_SIZE_M + A_block_tile_M_id] = A_row_vector_vals.elements[i];
+            }
         }
     }
 
@@ -178,10 +181,25 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_transposed_
             *reinterpret_cast<VECTOR_TYPE*>(&B_block_tile[B_block_tile_K_id * BLOCK_TILE_SIZE_N + B_block_tile_N_id]) = B_row_vector_vals.vec;
         }
     }
-    
 }
 
-#if defined(__CUDACC__) && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+#if CUDA_ARCH >= 80
+
+#define copy_cg_async(smem_ptr, gmem_ptr, BTYES)                \
+    asm volatile("cp.async.cg.shared.global [%0], [%1], %2;\n"  \
+                :: "r"(smem_ptr),                               \
+                "l"(gmem_ptr),                                  \
+                "n"(BTYES));
+
+#define copy_async_commit                           \
+    asm volatile("cp.async.commit_group;\n" ::);
+
+#define cp_async_wait(N)                                    \
+    asm volatile("cp.async.wait_group %0;\n" ::"n"(N));
+
+#define  cp_async_wait_all      \
+    asm volatile("cp.async.wait_all;\n"  ::);
+
 template <typename T, size_t BLOCK_TILE_SIZE_M, size_t BLOCK_TILE_SIZE_N, size_t BLOCK_TILE_SIZE_K,
           size_t WARP_TILE_SIZE_M, size_t WARP_TILE_SIZE_N,
           size_t THREAD_NUM, typename VECTOR_TYPE = char4>
@@ -193,9 +211,11 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_transposed_
         size_t thread_id
     )
 {
-    static_assert(sizeof(VECTOR_TYPE) % sizeof(T) == 0, "VECTOR_TYPE must be a multiple of T size");
+    constexpr size_t VECTOR_SIZE_BYTES = sizeof(VECTOR_TYPE);
+    static_assert(VECTOR_SIZE_BYTES % sizeof(T) == 0, "VECTOR_TYPE must be a multiple of T size");
 
-    constexpr size_t NUM_VECTOR_UNITS{sizeof(VECTOR_TYPE) / sizeof(T)};
+    constexpr size_t NUM_VECTOR_UNITS{VECTOR_SIZE_BYTES / sizeof(T)};
+    constexpr size_t VECTORIZED_BLOCK_TILE_SIZE_K{BLOCK_TILE_SIZE_K / NUM_VECTOR_UNITS};
     constexpr size_t VECTORIZED_BLOCK_TILE_SIZE_N{BLOCK_TILE_SIZE_N / NUM_VECTOR_UNITS};
     constexpr size_t VECTORIZED_BLOCK_TILE_SIZE_M{BLOCK_TILE_SIZE_M / NUM_VECTOR_UNITS};
 
@@ -207,17 +227,22 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_transposed_
     };
     
     for (size_t load_idx{0U}; load_idx < (BLOCK_TILE_SIZE_K * VECTORIZED_BLOCK_TILE_SIZE_M + THREAD_NUM - 1) / THREAD_NUM; load_idx ++) {
-        size_t A_block_tile_K_id{(thread_id + load_idx * THREAD_NUM) / VECTORIZED_BLOCK_TILE_SIZE_M};
-        size_t A_block_tile_M_id{(thread_id + load_idx * THREAD_NUM) % VECTORIZED_BLOCK_TILE_SIZE_M * NUM_VECTOR_UNITS};
+        // size_t A_block_tile_K_id{(thread_id + load_idx * THREAD_NUM) / VECTORIZED_BLOCK_TILE_SIZE_M};
+        // size_t A_block_tile_M_id{(thread_id + load_idx * THREAD_NUM) % VECTORIZED_BLOCK_TILE_SIZE_M * NUM_VECTOR_UNITS};
+        size_t A_block_tile_M_id{(thread_id + load_idx * THREAD_NUM) / VECTORIZED_BLOCK_TILE_SIZE_K};
+        size_t A_block_tile_K_id{(thread_id + load_idx * THREAD_NUM) % VECTORIZED_BLOCK_TILE_SIZE_K * NUM_VECTOR_UNITS};
 
         size_t A_M_id{A_block_tile_M_id + block_tile_start_m};
         size_t A_K_id{A_block_tile_K_id + block_tile_start_k};
 
         VectorAccess A_row_vector_vals;
-
-        A_row_vector_vals.vec = *reinterpret_cast<VECTOR_TYPE const*>(&A[A_M_id + A_K_id * M]);
-        if (A_block_tile_K_id < BLOCK_TILE_SIZE_K && A_block_tile_M_id < BLOCK_TILE_SIZE_M) {
-            *reinterpret_cast<VECTOR_TYPE*>(&A_T_block_tile[A_block_tile_K_id * BLOCK_TILE_SIZE_M + A_block_tile_M_id]) = A_row_vector_vals.vec;
+        
+        A_row_vector_vals.vec = *reinterpret_cast<VECTOR_TYPE const*>(&A[A_M_id * K + A_K_id]);
+        
+        for (size_t i = 0; i < NUM_VECTOR_UNITS; ++i) {
+            if (A_block_tile_K_id < BLOCK_TILE_SIZE_K && A_block_tile_M_id < BLOCK_TILE_SIZE_M) {
+                A_T_block_tile[(A_block_tile_K_id + i) * BLOCK_TILE_SIZE_M + A_block_tile_M_id] = A_row_vector_vals.elements[i];
+            }
         }
     }
 

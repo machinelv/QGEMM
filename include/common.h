@@ -6,12 +6,12 @@
 #endif
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 800
-#ifndef CUDA_SM80
-#define CUDA_SM80
+#ifndef CUDA_ARCH
+#define CUDA_ARCH 80
 #endif
 #elif  defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 890
-#ifndef CUDA_SM89
-#define CUDA_SM89
+#ifndef CUDA_ARCH
+#define CUDA_ARCH 89
 #endif
 #endif
 

@@ -37,7 +37,7 @@ find_package(CUDAToolkit REQUIRED)
 
 # Define preprocessor macro
 add_definitions(-DUSE_CUDA)
-add_definitions(-DCUDA_SM${CMAKE_CUDA_ARCHITECTURES})
+add_definitions(-DCUDA_ARCH=${CMAKE_CUDA_ARCHITECTURES})
 
 # Make CUTLASS optional
 find_path(CUTLASS_INCLUDE_DIR

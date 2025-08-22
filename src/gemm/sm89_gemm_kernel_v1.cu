@@ -249,7 +249,7 @@ void launch_bf16_kernel_v1(const __nv_bfloat16* A, size_t ldA, const __nv_bfloat
                     
 }
 
-#ifdef CUDA_SM89
+#if CUDA_ARCH == 89
 template<typename typeIn, typename typeOut>
 void GEMM_kernel_v1(const typeIn* A, size_t ldA,
                     const typeIn* B, size_t ldB, 

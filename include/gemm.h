@@ -35,4 +35,17 @@ void GEMM_kernel_v1<__nv_bfloat16, float>(const __nv_bfloat16* A, size_t ldA,
     float* C, size_t ldC,
     size_t M, size_t N, size_t K);
 
+template<typename typeIn, typename typeOut>
+void GEMM_kernel_v2(const typeIn* A, size_t ldA,
+    const typeIn* B, size_t ldB, 
+    typeOut* C, size_t ldC,
+    size_t M, size_t N, size_t K);
+
+// Template specializations
+template<>
+void GEMM_kernel_v2<__nv_bfloat16, float>(const __nv_bfloat16* A, size_t ldA,
+    const __nv_bfloat16* B, size_t ldB, 
+    float* C, size_t ldC,
+    size_t M, size_t N, size_t K);
+
 #endif

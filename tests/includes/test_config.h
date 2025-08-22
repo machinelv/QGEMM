@@ -12,6 +12,44 @@
 
 #include "simple_timer.h"
 #include "gemm.h"
+#include "blas.h"
+
+template <typename T>
+auto to_cuda_dtype() {
+    if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+        return CUDA_R_16BF;
+    } else if constexpr (std::is_same_v<T, int8_t>) {
+        return CUDA_R_8I;
+    } else if constexpr (std::is_same_v<T, float>) {
+        return CUDA_R_32F;
+    } 
+    return CUDA_R_32F;
+}
+
+template <typename typeIn, typename typeOut>
+void reference_gemm_blas(typeIn* A, size_t ldA,
+                        typeIn* B, size_t ldB, 
+                        typeOut* C, size_t ldC,
+                        size_t M, size_t N, size_t K) {
+    auto in_dtype  = to_cuda_dtype<typeIn>();
+    auto out_dtype = to_cuda_dtype<typeOut>();
+    const float alpha = 1.0f;
+    const float beta = 0.0f;
+                            
+    cublasGemmEx(blas::blas_handle,
+        CUBLAS_OP_N, CUBLAS_OP_N,
+        N, M, K,
+        &alpha,
+        B, in_dtype, ldB,
+        A, in_dtype, ldA,
+        &beta,
+        C, out_dtype, ldC,
+        CUDA_R_32F,
+        CUBLAS_GEMM_DEFAULT);
+    // if (status != CUBLAS_STATUS_SUCCESS) {
+    //     std::cerr << "cuBLAS GEMM (bf16->bf16) failed: " << status << std::endl;
+    // }
+}
 
 // Test configuration for SM80 architecture
 struct TestConfig {
@@ -53,105 +91,9 @@ template<typename typeIn, typename typeOut>
 class GEMMBenchmark{
 private:
     std::vector<CustomGEMMFunction<typeIn, typeOut>> custom_functions;
-
     CustomGEMMFunction<typeIn, typeOut> reference_function;
     std::vector<TestConfig> configs;
-
-    /**
-    auto allocate_memory(const TestConfig& config) {
-        size_t size_A = config.M * config.K;
-        size_t size_B = config.K * config.N;
-        size_t size_C = config.M * config.N;
-        
-        typeIn *d_A, *h_A;
-        typeIn *d_B, *h_B;
-        typeOut *d_C, *d_ref, *h_C, *h_ref;
-        
-        // Allocate host memory
-        h_A = new typeIn[size_A];
-        h_B = new typeIn[size_B];
-        h_C = new typeOut[size_C];
-        h_ref = new typeOut[size_C];
-
-        // Allocate device memory
-        cudaMalloc(&d_A, size_A * sizeof(typeIn));
-        cudaMalloc(&d_B, size_B * sizeof(typeIn));
-        cudaMalloc(&d_C, size_C * sizeof(typeOut));
-        cudaMalloc(&d_ref, size_C * sizeof(typeOut));
-        
-        return std::make_tuple(d_A, d_B, d_C, d_ref, h_A, h_B, h_C);
-    }
-    
-    void initialize_data(typeIn* h_A, typeIn* h_B, typeOut* h_C, const TestConfig& config) {
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        
-        if constexpr (std::is_same_v<typeIn, int8_t>) {
-            std::uniform_int_distribution<int> dis(-127, 127);
-            for (size_t i = 0; i < config.M * config.K; ++i) {
-                h_A[i] = static_cast<typeIn>(dis(gen));
-            }
-            for (size_t i = 0; i < config.K * config.N; ++i) {
-                h_B[i] = static_cast<typeIn>(dis(gen));
-            }
-        } else {
-            std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
-            for (size_t i = 0; i < config.M * config.K; ++i) {
-                h_A[i] = static_cast<typeIn>(dis(gen));
-            }
-            for (size_t i = 0; i < config.K * config.N; ++i) {
-                h_B[i] = static_cast<typeIn>(dis(gen));
-            }
-        }
-        
-        // Initialize C to zero
-        for (size_t i = 0; i < config.M * config.N; ++i) {
-            h_C[i] = static_cast<typeOut>(0);
-        }
-    }
-    
-    void copy_to_device(typeIn* d_A, typeIn* d_B, typeOut* d_C, 
-                       typeIn* h_A, typeIn* h_B, typeOut* h_C, 
-                       const TestConfig& config) {
-        cudaMemcpy(d_A, h_A, config.M * config.K * sizeof(typeIn), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_B, h_B, config.K * config.N * sizeof(typeIn), cudaMemcpyHostToDevice);     
-        cudaMemcpy(d_C, h_C, config.M * config.N * sizeof(typeOut), cudaMemcpyHostToDevice);
-    }
-    
-
-    std::pair<double, bool> check_correctness(ElementC* result, ElementC* reference, const TestConfig& config) {
-        size_t size = config.M * config.N;
-        ElementC* h_result = new ElementC[size];
-        ElementC* h_reference = new ElementC[size];
-        
-        cudaMemcpy(h_result, result, size * sizeof(ElementC), cudaMemcpyDeviceToHost);
-        cudaMemcpy(h_reference, reference, size * sizeof(ElementC), cudaMemcpyDeviceToHost);
-        
-        double max_error = 0.0;
-        bool is_correct = true;
-        
-        for (size_t i = 0; i < size; ++i) {
-            double diff = std::abs(static_cast<double>(h_result[i]) - static_cast<double>(h_reference[i]));
-            double ref_val = std::abs(static_cast<double>(h_reference[i]));
-            double relative_error = ref_val > 1e-10 ? diff / ref_val : diff;
-            
-            max_error = std::max(max_error, relative_error);
-            
-            if (relative_error > config.tolerance) {
-                is_correct = false;
-            }
-        }
-        
-        delete[] h_result;
-        delete[] h_reference;
-        
-        return {max_error, is_correct};
-    }
-
-
-    */
-
-
+private:
     void cleanup_memory(typeIn* d_A, typeIn* d_B, typeOut* d_C, typeOut* d_D, typeOut* d_ref,
                     typeIn* h_A, typeIn* h_B, typeOut* h_C, typeOut* h_ref) {
         delete[] h_A;
@@ -164,7 +106,6 @@ private:
         cudaFree(d_D);
         cudaFree(d_ref);
     }
-
 
     double run_func(const CustomGEMMFunction<typeIn, typeOut>& func, 
                     typeIn* d_A, size_t ldA,
@@ -237,12 +178,6 @@ public:
         custom_functions = new_functions;
     };
 
-    void reference_gemm(typeIn* A, size_t ldA,
-                        typeIn* B, size_t ldB, 
-                        typeOut* C, size_t ldC,
-                        size_t M, size_t N, size_t K) {
-        
-    }
 
     void add_custom_function(const std::string& name, 
                              std::function<void(typeIn*, size_t, typeIn*, size_t, typeOut*, size_t, size_t, size_t, size_t)> func) {
@@ -265,7 +200,12 @@ public:
         reference_function = ref_function;
     }
 
+    void set_reference_function() {
+        reference_function = CustomGEMMFunction<typeIn, typeOut>("reference_cublas", reference_gemm_blas<typeIn, typeOut>);
+    }
+
     void run_benchmark() {
+        blas::blas_init();
         for (const auto& config : configs) {
             std::cout << "\n=== GEMM Benchmark ===" << std::endl;
             std::cout << "Problem size: M=" << config.M << ", N=" << config.N << ", K=" << config.K << std::endl;
@@ -355,6 +295,6 @@ public:
             cudaFree(d_C);
             cudaFree(d_ref_C);
         }
-
+        blas::blas_destroy();
     }
 };

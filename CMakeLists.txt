@@ -29,7 +29,7 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 # CUDA architecture settings
 if (CMAKE_CUDA_ARCHITECTURES STREQUAL "")
-set(CMAKE_CUDA_ARCHITECTURES "80" CACHE STRING "CUDA architectures")
+    set(CMAKE_CUDA_ARCHITECTURES "80" CACHE STRING "CUDA architectures")
 endif()
 
 # Find packages
@@ -68,6 +68,7 @@ endif()
 # Source files
 set(GEMM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/gemm/test_cutlass_gemm.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/gemm/test_cublas_gemm.cu
 )
 
 # Use file(GLOB) to properly find the architecture-specific files

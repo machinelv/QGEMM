@@ -14,6 +14,14 @@ void cutlass_gemm_test(typeIn* A, size_t ldA,
     typeOut* C, size_t ldC,
     size_t M, size_t N, size_t K);
 
+template <typename typeIn, typename typeOut>
+void cublas_gemm_test(
+    typeIn* A, size_t ldA,
+    typeIn* B, size_t ldB,
+    typeOut* C, size_t ldC,
+    size_t M, size_t N, size_t K);
+
+
 template<typename typeIn, typename typeOut>
 void GEMM_kernel_v1(const typeIn* A, size_t ldA,
     const typeIn* B, size_t ldB, 
@@ -22,9 +30,9 @@ void GEMM_kernel_v1(const typeIn* A, size_t ldA,
 
 // Template specializations
 template<>
-void GEMM_kernel_v1<__nv_bfloat16, __nv_bfloat16>(const __nv_bfloat16* A, size_t ldA,
+void GEMM_kernel_v1<__nv_bfloat16, float>(const __nv_bfloat16* A, size_t ldA,
     const __nv_bfloat16* B, size_t ldB, 
-    __nv_bfloat16* C, size_t ldC,
+    float* C, size_t ldC,
     size_t M, size_t N, size_t K);
 
 #endif

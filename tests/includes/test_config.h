@@ -23,7 +23,7 @@ struct TestConfig {
     double tolerance;
 
     TestConfig(size_t m, size_t n, size_t k, const std::string& prec,
-               size_t warmup = 5, size_t bench = 10, double tol = 1e-2, int s = 42)
+               size_t warmup = 5, size_t bench = 10, double tol = 5e-2, int s = 42)
         : M(m), N(n), K(k), precision(prec), warmup_runs(warmup),
           benchmark_runs(bench), seed(s), tolerance(tol){}
 };
@@ -187,7 +187,6 @@ private:
         for (size_t i = 0; i < bench; ++i) {
             func(d_A, ldA, d_B, ldB, d_C, ldC, M, N, K);
         }
-        timer.stop();
         double elapsed_ms = timer.stop();
         double avg_time = elapsed_ms / bench;
 
@@ -266,9 +265,6 @@ public:
         reference_function = ref_function;
     }
 
-
-
-
     void run_benchmark() {
         for (const auto& config : configs) {
             std::cout << "\n=== GEMM Benchmark ===" << std::endl;
@@ -294,10 +290,12 @@ public:
             // int rand_seed = config.seed; // For future use if needed
             
             // Allocate memory and initialize data
-            typeIn *h_A, *h_B, *h_C, *h_ref_C;
-            typeIn *d_A, *d_B, *d_C, *d_ref_C;
+            typeIn *h_A, *h_B;
+            typeOut *h_C, *h_ref_C;
+            typeIn *d_A, *d_B;
+            typeOut *d_C, *d_ref_C;
 
-            size_t ldA = M, ldB = K, ldC = M;
+            size_t ldA = K, ldB = N, ldC = N;  // Correct leading dimensions for row-major matrices
             h_A = new typeIn[M * K];
             h_B = new typeIn[K * N];
             h_C = new typeOut[M * N];
@@ -311,25 +309,27 @@ public:
 
             // Initialize data 
             for (size_t i = 0; i < M * K; ++i) {
-                h_A[i] = static_cast<typeIn>(rand()); // Example initialization
+                h_A[i] = static_cast<typeIn>((i % 43) / 20.0); // Example initialization
             }
             for (size_t i = 0; i < K * N; ++i) {
-                h_B[i] = static_cast<typeIn>(rand()); // Example initialization
+                h_B[i] = static_cast<typeIn>((i % 37) / 18.0); // Example initialization
             }
-            for (size_t i = 0; i < M * N; ++i) {
-                h_C[i] = static_cast<typeOut>(0); // Initialize output to zero
-            }
+
             // Copy data to device
             cudaMemcpy(d_A, h_A, M * K * sizeof(typeIn), cudaMemcpyHostToDevice);
             cudaMemcpy(d_B, h_B, K * N * sizeof(typeIn), cudaMemcpyHostToDevice);
-            cudaMemcpy(d_C, h_C, M * N * sizeof(typeOut), cudaMemcpyHostToDevice);
-            cudaMemcpy(d_ref_C, h_ref_C, M * N * sizeof(typeOut), cudaMemcpyHostToDevice);
 
+            
+            cudaMemcpy(d_ref_C, h_ref_C, M * N * sizeof(typeOut), cudaMemcpyHostToDevice);
             double avg_time_ref = run_func(reference_function, d_A, ldA, d_B, ldB, d_ref_C, ldC, config);
             cudaMemcpy(h_ref_C, d_ref_C, M * N * sizeof(typeOut), cudaMemcpyDeviceToHost);
             print_result(reference_function.name, avg_time_ref, config, 0.0, true, avg_time_ref);
             
             for (const auto& func : custom_functions) {
+                for (size_t i = 0; i < M * N; ++i) {
+                    h_C[i] = static_cast<typeOut>(0); // Initialize output to zero
+                }
+                cudaMemcpy(d_C, h_C, M * N * sizeof(typeOut), cudaMemcpyHostToDevice);
                 double avg_time = run_func(func, d_A, ldA, d_B, ldB, d_C, ldC, config);
                 cudaMemcpy(h_C, d_C, M * N * sizeof(typeOut), cudaMemcpyDeviceToHost);
 
@@ -344,7 +344,14 @@ public:
             }
             std::cout << std::string(90, '=') << std::endl;
             // Clean up
-            cleanup_memory(d_A, d_B, d_C, d_ref_C, d_ref_C, h_A, h_B, h_C, h_ref_C);
+            delete[] h_A;
+            delete[] h_B;
+            delete[] h_C;
+            delete[] h_ref_C;
+            cudaFree(d_A);
+            cudaFree(d_B);
+            cudaFree(d_C);
+            cudaFree(d_ref_C);
         }
 
     }

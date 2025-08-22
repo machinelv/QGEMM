@@ -16,15 +16,15 @@ void cutlass_gemm_test(
     size_t M, size_t N, size_t K);
 
 template <>
-void cutlass_gemm_test<__nv_bfloat16, __nv_bfloat16>(
+void cutlass_gemm_test<__nv_bfloat16, float>(
     __nv_bfloat16* A, size_t ldA,
     __nv_bfloat16* B, size_t ldB,
-    __nv_bfloat16* C, size_t ldC,
+    float* C, size_t ldC,
     size_t M, size_t N, size_t K) {
 
   using ElementA = __nv_bfloat16;
   using ElementB = __nv_bfloat16;
-  using ElementC = __nv_bfloat16;
+  using ElementC = float;
   using ElementAccumulator = float;
 
   using Layout = cutlass::layout::RowMajor;

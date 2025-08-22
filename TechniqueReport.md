@@ -77,3 +77,31 @@ The difference between `ca` and `cg` is:
 
 - `ca`: The default cache updating method. Update cache at all levels.
 - `cg`: Cache at global level. Use ld.cg to cache loads only globally, bypassing the L1 cache, and cache only in the L2 cache.
+
+
+## SM89 Normal BF16 GEMM Kernel
+
+### V2
+
+
+
+#### Performance in RTX4090
+
+
+| Problem Size | GEMM_kernel_v1 | GEMM_kernel_v2 | cublas_gemm_test | cutlass_gemm_test | reference_cublas |
+| --- | --- | --- | --- | --- | --- |
+| M=512, N=512, K=512 | 6.096 | 8.978 | 1.090 | 4.846 | 34.953 |
+| M=1024, N=512, K=2048 | 12.780 | 19.222 | 8.405 | 10.195 | 119.156 |
+| M=2048, N=2048, K=2048 | 69.442 | 94.733 | 48.335 | 40.692 | 151.968 |
+| M=4096, N=4096, K=4096 | 82.241 | 105.975 | 115.575 | 41.218 | 145.636 |
+| M=8192, N=4096, K=2048 | 82.055 | 105.792 | 126.968 | 43.025 | 162.826 |
+
+Speedup
+
+| Problem Size | GEMM_kernel_v1 | GEMM_kernel_v2 | cublas_gemm_test | cutlass_gemm_test | reference_cublas |
+| --- | --- | --- | --- | --- | --- |
+| M=512, N=512, K=512 | 0.17x | 0.26x | 0.03x | 0.14x | 1.00x |
+| M=1024, N=512, K=2048 | 0.11x | 0.16x | 0.07x | 0.09x | 1.00x |
+| M=2048, N=2048, K=2048 | 0.46x | 0.62x | 0.32x | 0.27x | 1.00x |
+| M=4096, N=4096, K=4096 | 0.56x | 0.73x | 0.79x | 0.28x | 1.00x |
+| M=8192, N=4096, K=2048 | 0.50x | 0.65x | 0.78x | 0.26x | 1.00x |

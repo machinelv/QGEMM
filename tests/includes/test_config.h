@@ -309,10 +309,12 @@ public:
 
             // Initialize data 
             for (size_t i = 0; i < M * K; ++i) {
-                h_A[i] = static_cast<typeIn>((i % 43) / 20.0); // Example initialization
+                float v = ((float)(i % 43) / 20.0 + 0.2 + (i % 37)); // Example initialization
+                h_A[i] = static_cast<typeIn>(v); // Example initialization
             }
             for (size_t i = 0; i < K * N; ++i) {
-                h_B[i] = static_cast<typeIn>((i % 37) / 18.0); // Example initialization
+                float v = ((float)(i % 43) / 20.0 + 0.2 + (i % 37)); // Example initialization
+                h_B[i] = static_cast<typeIn>(v); // Example initialization
             }
 
             // Copy data to device

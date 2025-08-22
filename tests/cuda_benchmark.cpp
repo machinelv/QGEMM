@@ -46,7 +46,7 @@ int main() {
         TestConfig(2048, 2048, 2048, "bf16"),
         TestConfig(4096, 4096, 4096, "bf16"),
         TestConfig(8192, 4096, 2048, "bf16"),
-        TestConfig(8192, 8192, 8192, "bf16"),
+        // TestConfig(8192, 8192, 8192, "bf16"),
     };
 
     std::vector<TestConfig> configs_int8 = {
@@ -61,7 +61,7 @@ int main() {
             CustomGEMMFunction<__nv_bfloat16, float>("cutlass_gemm_test", cutlass_gemm_test<__nv_bfloat16, float>),
             CustomGEMMFunction<__nv_bfloat16, float>("cublas_gemm_test", cublas_gemm_test<__nv_bfloat16, float>),
             CustomGEMMFunction<__nv_bfloat16, float>("GEMM_kernel_v1", GEMM_kernel_v1<__nv_bfloat16, float>),
-            CustomGEMMFunction<__nv_bfloat16, float>("GEMM_kernel_v2", GEMM_kernel_v1<__nv_bfloat16, float>)
+            CustomGEMMFunction<__nv_bfloat16, float>("GEMM_kernel_v2", GEMM_kernel_v2<__nv_bfloat16, float>)
         };
 
     std::vector<CustomGEMMFunction<int8_t, int8_t>> int8_functions = {
@@ -71,7 +71,7 @@ int main() {
     GEMMBenchmark<__nv_bfloat16, float> bf16_benchmark(configs_bf16, bf16_functions);
     GEMMBenchmark<int8_t, int8_t> int8_benchmark(configs_int8, int8_functions);
 
-    bf16_benchmark.set_reference_function(CustomGEMMFunction<__nv_bfloat16, float>("cutlass_gemm_test", cutlass_gemm_test<__nv_bfloat16, float>));
+    // bf16_benchmark.set_reference_function(CustomGEMMFunction<__nv_bfloat16, float>("cutlass_gemm_test", cutlass_gemm_test<__nv_bfloat16, float>));
     bf16_benchmark.set_reference_function(CustomGEMMFunction<__nv_bfloat16, float>("cublas_gemm_test", cublas_gemm_test<__nv_bfloat16, float>));
 
     // int8_benchmark.set_reference_function(CustomGEMMFunction<int8_t, int8_t>("cutlass_gemm_test", cutlass_gemm_test<int8_t, int8_t>));

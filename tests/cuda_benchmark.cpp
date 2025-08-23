@@ -46,7 +46,7 @@ int main() {
         TestConfig(2048, 2048, 2048, "bf16"),
         TestConfig(4096, 4096, 4096, "bf16"),
         TestConfig(8192, 4096, 2048, "bf16"),
-        // TestConfig(8192, 8192, 8192, "bf16"),
+        TestConfig(8192, 4096, 4096, "bf16"),
     };
 
     std::vector<TestConfig> configs_int8 = {
@@ -60,7 +60,8 @@ int main() {
     std::vector<CustomGEMMFunction<__nv_bfloat16, float>> bf16_functions = {
             CustomGEMMFunction<__nv_bfloat16, float>("cutlass_gemm_test", cutlass_gemm_test<__nv_bfloat16, float>),
             CustomGEMMFunction<__nv_bfloat16, float>("GEMM_kernel_v1", GEMM_kernel_v1<__nv_bfloat16, float>),
-            CustomGEMMFunction<__nv_bfloat16, float>("GEMM_kernel_v2", GEMM_kernel_v2<__nv_bfloat16, float>)
+            CustomGEMMFunction<__nv_bfloat16, float>("GEMM_kernel_v2", GEMM_kernel_v2<__nv_bfloat16, float>),
+            CustomGEMMFunction<__nv_bfloat16, float>("GEMM_kernel_v3", GEMM_kernel_v3<__nv_bfloat16, float>),
         };
 
     std::vector<CustomGEMMFunction<int8_t, int8_t>> int8_functions = {

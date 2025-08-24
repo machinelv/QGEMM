@@ -40,6 +40,27 @@ inline __device__ void process_data_from_shared_memory_using_wmma_bf16_swizzle(
     size_t thread_id = threadIdx.x + threadIdx.y * blockDim.x;
     size_t lane_id = thread_id % WARP_SIZE;
 
+    constexpr auto get_log_2 = [](size_t x) {
+        size_t i = 0;
+        while(x & 0x1 != 0) {
+            i ++;
+            x = x >> 1;
+        }
+    };
+
+    constexpr size_t trunk_size_bits = 128;
+    constexpr size_t element_num_per_trunk = trunk_size_bits / sizeof(__nv_bfloat16);
+    constexpr size_t trunk_per_cacheline_k = BLOCK_TILE_SIZE_K / element_num_per_trunk;
+
+    // The magic number of m16n8k16 layout
+    size_t group_id = lane_id >> 2;
+    size_t thread_id_in_group = lane_id % 4;
+
+    
+    size_t thread_smem_to_reg_idx_m = 0;
+    size_t thread_smem_to_reg_idx_n = 0;
+    size_t thread_smem_to_reg_idx_k = 0;
+
     // process wmma tile
     #pragma unroll(WMMA_TILE_PER_WARP_K)
     for (size_t wmma_tile_idx_k{0U}; wmma_tile_idx_k < WMMA_TILE_PER_WARP_K; ++wmma_tile_idx_k) {
@@ -50,18 +71,23 @@ inline __device__ void process_data_from_shared_memory_using_wmma_bf16_swizzle(
         for (size_t wmma_tile_idx_m{0U}; wmma_tile_idx_m < WMMA_TILE_PER_WARP_M; ++wmma_tile_idx_m) {
             size_t block_tile_wmma_tile_m_idx{warp_m_id * WARP_TILE_SIZE_M + wmma_tile_idx_m * WMMA_TILE_SIZE_M};
             // wmma::load_matrix_sync(a_frag[wmma_tile_idx_m], &A_shared_block_tile[block_tile_wmma_tile_k_idx + block_tile_wmma_tile_m_idx * BLOCK_TILE_SIZE_K], BLOCK_TILE_SIZE_K);
-            size_t row_id, col_id;
-            shared_memory_swizzle_coordinate<3,3,3,__nv_bfloat16>(lane_id, row_id, col_id);
-            uint32_t smem_addr = __cvta_generic_to_shared(&A_shared_block_tile[row_id * BLOCK_TILE_SIZE_K + col_id]);
+            shared_memory_swizzle_coordinate
+                <get_log_2(trunk_per_cacheline_k), get_log_2(trunk_size_bits), get_log_2(WMMA_TILE_SIZE_M)>
+                ();
+            uint32_t smem_addr = 
+                __cvta_generic_to_shared(&A_shared_block_tile[]);
             LDMATRIX_BF16_X4(a_frag[wmma_tile_idx_m][0], a_frag[wmma_tile_idx_m][1], a_frag[wmma_tile_idx_m][2], a_frag[wmma_tile_idx_m][3], smem_addr);
         }
         #pragma unroll(WMMA_TILE_PER_WARP_N)
         for (size_t wmma_tile_idx_n{0U}; wmma_tile_idx_n < WMMA_TILE_PER_WARP_N; ++wmma_tile_idx_n) {
             size_t block_tile_wmma_tile_n_idx{warp_n_id * WARP_TILE_SIZE_N + wmma_tile_idx_n * WMMA_TILE_SIZE_N};
             // wmma::load_matrix_sync(b_frag[wmma_tile_idx_n], &B_shared_block_tile[block_tile_wmma_tile_k_idx * BLOCK_TILE_SIZE_N + block_tile_wmma_tile_n_idx], BLOCK_TILE_SIZE_N);
-            size_t row_id, col_id;
-            shared_memory_swizzle_coordinate<3,3,3,__nv_bfloat16>(lane_id, &row_id, &col_id);
-            uint32_t smem_addr = __cvta_generic_to_shared(&B_shared_block_tile[row_id * BLOCK_TILE_SIZE_N + col_id]);
+            shared_memory_swizzle_coordinate
+                <get_log_2(trunk_per_cacheline_k), get_log_2(trunk_size_bits),get_log_2(WMMA_TILE_SIZE_N)>
+                (lane_id, &row_id, &col_id);
+            uint32_t smem_addr = __cvta_generic_to_shared(&B_shared_block_tile[
+                    (row_id * element_num_per_trunk + block_tile_wmma_tile_n_idx) * BLOCK_TILE_SIZE_N 
+                    + col_id]);
             LDMATRIX_BF16_TRANSPOSE_X4(b_frag[wmma_tile_idx_n][0], b_frag[wmma_tile_idx_n][1], b_frag[wmma_tile_idx_n][2], b_frag[wmma_tile_idx_n][3], smem_addr);
         }
         // Compute the acc_frag_fp32
@@ -70,12 +96,12 @@ inline __device__ void process_data_from_shared_memory_using_wmma_bf16_swizzle(
             #pragma unroll(WMMA_TILE_PER_WARP_N)
             for (size_t wmma_tile_idx_n{0U}; wmma_tile_idx_n < WMMA_TILE_PER_WARP_N; ++wmma_tile_idx_n) {
                 // wmma::mma_sync(acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n], a_frag[wmma_tile_idx_m], b_frag[wmma_tile_idx_n], acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n]);
-                BF16MMA16816(acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][0], acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][1],
+                BF16F32MMA16816(acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][0], acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][1],
                 a_frag[wmma_tile_idx_m][0], a_frag[wmma_tile_idx_m][1], a_frag[wmma_tile_idx_m][2], a_frag[wmma_tile_idx_m][3],
                 b_frag[wmma_tile_idx_n][0], b_frag[wmma_tile_idx_n][1],
                 acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][0], acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][1]);
 
-                BF16MMA16816(acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][2], acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][3],
+                BF16F32MMA16816(acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][2], acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][3],
                 a_frag[wmma_tile_idx_m][0], a_frag[wmma_tile_idx_m][1], a_frag[wmma_tile_idx_m][2], a_frag[wmma_tile_idx_m][3],
                 b_frag[wmma_tile_idx_n][2], b_frag[wmma_tile_idx_n][3],
                 acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][2], acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n][3]);
@@ -180,8 +206,7 @@ __global__ void GEMM_kernel_bf16_v3(const __nv_bfloat16* A, size_t ldA, const __
         size_t block_tile_start_k = block_id_k;
         // load A and B matrices from global memory to shared memory
         load_data_from_global_memory_to_shared_memory_async
-            <__nv_bfloat16, BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K,
-            WARP_TILE_SIZE_M, WARP_TILE_SIZE_N, THREAD_NUM>
+            <__nv_bfloat16, BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K, THREAD_NUM>
             (A, B, A_block_tile, B_block_tile, M, N, K,
              block_tile_start_m, block_tile_start_n, block_tile_start_k, thread_id);
         cp_async_wait_all;

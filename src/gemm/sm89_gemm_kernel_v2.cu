@@ -144,8 +144,7 @@ __global__ void GEMM_kernel_bf16_v2(const __nv_bfloat16* A, size_t ldA, const __
         size_t block_tile_start_k = block_id_k;
         // load A and B matrices from global memory to shared memory
         load_data_from_global_memory_to_shared_memory_async
-            <__nv_bfloat16, BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K,
-            WARP_TILE_SIZE_M, WARP_TILE_SIZE_N, THREAD_NUM>
+            <__nv_bfloat16, BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K, THREAD_NUM>
             (A, B, A_block_tile, B_block_tile, M, N, K,
              block_tile_start_m, block_tile_start_n, block_tile_start_k, thread_id);
         cp_async_wait_all;

@@ -249,7 +249,7 @@ public:
 
             // Initialize data 
             for (size_t i = 0; i < M * K; ++i) {
-                float v = ((float)(i % 43) / 20.0 + 0.2 + (i % 37)); // Example initialization
+                float v = ((float)(i % 43) / 20.0 + 0.2 + (i % 19)); // Example initialization
                 h_A[i] = static_cast<typeIn>(v); // Example initialization
             }
             for (size_t i = 0; i < K * N; ++i) {

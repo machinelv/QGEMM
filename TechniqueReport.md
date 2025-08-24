@@ -1,6 +1,83 @@
 This is a technique report for this GEMM repository, which implements both normal and mixed precision GEMM kernels. The kernels are designed to optimize matrix multiplication operations using CUDA C++ and Triton, with a focus on performance enhancements through various optimization techniques.
  
 
+# Key Techniques
+
+
+## Asynchronize Memory Operators
+
+https://docs.nvidia.com/cuda/parallel-thread-execution/#half-precision-comparison-instructions
+
+`cp.async`: Initiates an asynchronous copy operation from one state space to another.
+
+```asm
+cp.async.ca.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
+                         [dst], [src], cp-size{, src-size}{, cache-policy} ;
+cp.async.cg.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
+                         [dst], [src], 16{, src-size}{, cache-policy} ;
+cp.async.ca.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
+                         [dst], [src], cp-size{, ignore-src}{, cache-policy} ;
+cp.async.cg.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
+                         [dst], [src], 16{, ignore-src}{, cache-policy} ;
+
+.level::cache_hint =     { .L2::cache_hint }
+.level::prefetch_size =  { .L2::64B, .L2::128B, .L2::256B }
+cp-size =                { 4, 8, 16 }
+```
+
+
+The difference between `ca` and `cg` is:
+
+- `ca`: The default cache updating method. Update cache at all levels.
+- `cg`: Cache at global level. Use ld.cg to cache loads only globally, bypassing the L1 cache, and cache only in the L2 cache.
+
+
+## warp-level matrix multiplication instructions
+
+Now, let's talk about how PTX handles matrix multiplication at the warp level. We classify them into three categories:
+- warp-level matrix loads
+- warp-level matrix stores
+- warp-level matrix multiplication
+
+### warp-level matrix load
+
+The official documentation is https://docs.nvidia.com/cuda/parallel-thread-execution/#warp-level-matrix-instructions-ldmatrix.
+
+
+
+Let's take an fp16 mma for example.
+
+The data movement in the path is shown below:
+![alt text](./property/hmma.16816.datamove.A.png)
+
+
+
+![alt text](./property/hmma.16816.png)
+
+![alt text](./property/hmma.16816.datamove.B.png)
+
+
+### warp-level matrix multiplication
+
+
+
+### warp-level matrix store
+
+
+## swizzle
+
+
+### thread block swizzle
+
+Thread block swizzling is aimed to increase L2 locality.
+
+
+
+### warp-level swizzle
+
+
+Every thread needs to get an coordinate to fetch the shared memory. 
+
 
 # GEMM
 
@@ -51,38 +128,10 @@ The performance is:
 
 The V2 version 
 
-#### Asynchronize Memory Operators
-
-https://docs.nvidia.com/cuda/parallel-thread-execution/#half-precision-comparison-instructions
-
-`cp.async`: Initiates an asynchronous copy operation from one state space to another.
-
-```asm
-cp.async.ca.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
-                         [dst], [src], cp-size{, src-size}{, cache-policy} ;
-cp.async.cg.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
-                         [dst], [src], 16{, src-size}{, cache-policy} ;
-cp.async.ca.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
-                         [dst], [src], cp-size{, ignore-src}{, cache-policy} ;
-cp.async.cg.shared{::cta}.global{.level::cache_hint}{.level::prefetch_size}
-                         [dst], [src], 16{, ignore-src}{, cache-policy} ;
-
-.level::cache_hint =     { .L2::cache_hint }
-.level::prefetch_size =  { .L2::64B, .L2::128B, .L2::256B }
-cp-size =                { 4, 8, 16 }
-```
-
-
-The difference between `ca` and `cg` is:
-
-- `ca`: The default cache updating method. Update cache at all levels.
-- `cg`: Cache at global level. Use ld.cg to cache loads only globally, bypassing the L1 cache, and cache only in the L2 cache.
-
 
 ## SM89 Normal BF16 GEMM Kernel
 
 ### V2
-
 
 
 #### Performance in RTX4090
@@ -107,7 +156,8 @@ Speedup
 | M=8192, N=4096, K=2048 | 0.50x | 0.65x | 0.78x | 0.26x | 1.00x |
 
 
-
 ### V3
 
-In this step, we add swizzling to 
+In this step, we add swizzling in two levels: thread-block swizzle and warp-level swizzle.
+
+

@@ -23,13 +23,13 @@ To review the GEMM kernel and test our code struture, we first implement an norm
 
 - [ ] Transpose input matrices to improve L2 cache hit rate and HBM bandwidth utilization.
 - [ ] Batch GDS-to-LDS memory loads.
-- [ ] Employing asynchronous buffer load instructions 
-- [ ] Pad shared memory to avoid bank conflicts.
+- [x] Employing asynchronous bur load instructions 
+- [x] Pad shared memory to avoid bank conflicts.
 - [ ] Split-K to improve CU occupancy when M and N are small but K is large.
-- [ ] Pipeline GDS-to-LDS loading and Matrix Core computation (sm80 special Instruction).
+- [x] Pipeline GDS-to-LDS loading and Matrix Core computation (sm80 special Instruction).
 - [ ] Fast (but unsafe) float-to-bfloat16 casting.
-- [ ] Block swizzling to further increase L2 cache hit rate.
-- [ ] Swizzling data in LDS to avoid explicit padding.
+- [x] Block swizzling to further increase L2 cache hit rate.
+- [x] Swizzling data in LDS to avoid explicit padding.
 
 # Triton Implementation
 

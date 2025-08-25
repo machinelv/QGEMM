@@ -32,6 +32,14 @@ constexpr GEMM_Config config_256_128_128_1_4{256, 128, 64, 1, 4};
 
 namespace sm89{
 struct WMMA_BF16_Config {
+    static constexpr size_t WARP_TILE_SIZE_M  = 64;    // wmma number of rows in a warp  
+    static constexpr size_t WARP_TILE_SIZE_N  = 64;    // wmma number of columns in a warp
+    static constexpr size_t WMMA_TILE_SIZE_M   = 16;
+    static constexpr size_t WMMA_TILE_SIZE_N   = 16;
+    static constexpr size_t WMMA_TILE_SIZE_K   = 16;
+};
+
+struct WMMA_BF16_Config_2 {
     static constexpr size_t WARP_TILE_SIZE_M  = 32;    // wmma number of rows in a warp  
     static constexpr size_t WARP_TILE_SIZE_N  = 32;    // wmma number of columns in a warp
     static constexpr size_t WMMA_TILE_SIZE_M   = 16;

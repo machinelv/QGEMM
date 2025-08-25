@@ -177,7 +177,7 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_transposed(
 #if CUDA_ARCH >= 80
 
 template <typename T, size_t BLOCK_TILE_SIZE_M, size_t BLOCK_TILE_SIZE_N, size_t BLOCK_TILE_SIZE_K,
-          size_t THREAD_NUM, typename VECTOR_TYPE = float4>
+          size_t THREAD_NUM, typename VECTOR_TYPE = float4, size_t PADDING = 0>
 inline __device__ void load_data_from_global_memory_to_shared_memory_async(
         const T* A, const T* B,
         T* A_block_tile, T* B_block_tile,
@@ -190,8 +190,8 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_async(
     static_assert(VECTOR_SIZE_BYTE % sizeof(T) == 0, "VECTOR_TYPE must be a multiple of T size");
 
     constexpr size_t NUM_VECTOR_UNITS{VECTOR_SIZE_BYTE / sizeof(T)};
-    constexpr size_t VECTORIZED_BLOCK_TILE_SIZE_K{BLOCK_TILE_SIZE_K / NUM_VECTOR_UNITS};
-    constexpr size_t VECTORIZED_BLOCK_TILE_SIZE_N{BLOCK_TILE_SIZE_N / NUM_VECTOR_UNITS};
+    constexpr size_t VECTORIZED_BLOCK_TILE_SIZE_K{(BLOCK_TILE_SIZE_K) / NUM_VECTOR_UNITS};
+    constexpr size_t VECTORIZED_BLOCK_TILE_SIZE_N{(BLOCK_TILE_SIZE_N) / NUM_VECTOR_UNITS};
     constexpr size_t VECTORIZED_BLOCK_TILE_SIZE_M{BLOCK_TILE_SIZE_M / NUM_VECTOR_UNITS};
 
     static_assert(BLOCK_TILE_SIZE_N % NUM_VECTOR_UNITS == 0);
@@ -204,7 +204,7 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_async(
         size_t A_M_id{A_block_tile_M_id + block_tile_start_m};
         size_t A_K_id{A_block_tile_K_id + block_tile_start_k};
 
-        uint32_t smem_addr = __cvta_generic_to_shared(&A_block_tile[A_block_tile_K_id + A_block_tile_M_id * BLOCK_TILE_SIZE_K + pipeline_id * BLOCK_TILE_SIZE_K * BLOCK_TILE_SIZE_M]);
+        uint32_t smem_addr = __cvta_generic_to_shared(&A_block_tile[A_block_tile_K_id + A_block_tile_M_id * (BLOCK_TILE_SIZE_K + PADDING) + pipeline_id * (BLOCK_TILE_SIZE_K + PADDING) * BLOCK_TILE_SIZE_M]);
         auto gmem_addr = (&A[A_M_id * K + A_K_id]);
         copy_cg_async(smem_addr, gmem_addr, VECTOR_SIZE_BYTE);
     }
@@ -216,7 +216,7 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_async(
         size_t B_K_id{B_block_tile_K_id + block_tile_start_k};
         size_t B_N_id{B_block_tile_N_id + block_tile_start_n};
 
-        uint32_t smem_addr = __cvta_generic_to_shared(&B_block_tile[B_block_tile_K_id * BLOCK_TILE_SIZE_N + B_block_tile_N_id + pipeline_id * BLOCK_TILE_SIZE_K * BLOCK_TILE_SIZE_N]);
+        uint32_t smem_addr = __cvta_generic_to_shared(&B_block_tile[B_block_tile_K_id * (BLOCK_TILE_SIZE_N + PADDING) + B_block_tile_N_id + pipeline_id * BLOCK_TILE_SIZE_K * (BLOCK_TILE_SIZE_N + PADDING)]);
         auto gmem_addr = (&B[B_K_id * N + B_N_id]);
         copy_cg_async(smem_addr, gmem_addr, VECTOR_SIZE_BYTE);
     }

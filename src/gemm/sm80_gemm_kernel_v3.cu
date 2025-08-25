@@ -18,12 +18,12 @@ using namespace gemm_kernel;
 using WMMA_BF16_Config = gemm_kernel::sm80::WMMA_BF16_Config;
 
 namespace {
-    template <  size_t BLOCK_TILE_SIZE_M, size_t BLOCK_TILE_SIZE_N, size_t BLOCK_TILE_SIZE_K,
+template <  size_t BLOCK_TILE_SIZE_M, size_t BLOCK_TILE_SIZE_N, size_t BLOCK_TILE_SIZE_K,
             size_t WARP_TILE_SIZE_M, size_t WARP_TILE_SIZE_N, 
             size_t WMMA_TILE_PER_WARP_M, size_t WMMA_TILE_PER_WARP_N, size_t WMMA_TILE_PER_WARP_K,
             size_t WMMA_TILE_SIZE_M, size_t WMMA_TILE_SIZE_N, size_t WMMA_TILE_SIZE_K,
             size_t WMMA_REG_PER_THREAD_A, size_t WMMA_REG_PER_THREAD_B, size_t WMMA_REG_PER_THREAD_C>
-inline __device__ void process_data_from_shared_memory_using_wmma_bf16_transposed_swizzle(
+inline __device__ void process_data_from_shared_memory_using_wmma_bf16_transposed(
         const __nv_bfloat16* A_shared_block_tile,
         const __nv_bfloat16* B_T_shared_block_tile,
         uint32_t a_frag[WMMA_TILE_PER_WARP_M][WMMA_REG_PER_THREAD_A],
@@ -118,7 +118,7 @@ template <  size_t BLOCK_TILE_SIZE_M, size_t BLOCK_TILE_SIZE_N, size_t BLOCK_TIL
             size_t WMMA_TILE_PER_WARP_M, size_t WMMA_TILE_PER_WARP_N, size_t WMMA_TILE_PER_WARP_K,
             size_t WMMA_TILE_SIZE_M, size_t WMMA_TILE_SIZE_N, size_t WMMA_TILE_SIZE_K,
             size_t WMMA_REG_PER_THREAD_A, size_t WMMA_REG_PER_THREAD_B, size_t WMMA_REG_PER_THREAD_C>
-inline __device__ void process_data_from_shared_memory_using_wmma_bf16_swizzle(
+inline __device__ void process_data_from_shared_memory_using_wmma_bf16(
         const __nv_bfloat16* A_shared_block_tile,
         const __nv_bfloat16* B_shared_block_tile,
         uint32_t a_frag[WMMA_TILE_PER_WARP_M][WMMA_REG_PER_THREAD_A],
@@ -320,7 +320,7 @@ __global__ void GEMM_kernel_bf16_v3(const __nv_bfloat16* A, size_t ldA, const __
         __syncthreads();
 
         // load a_frag and b_frag from shared memory to registers and compute
-        process_data_from_shared_memory_using_wmma_bf16_swizzle<
+        process_data_from_shared_memory_using_wmma_bf16<
             BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K,
             WARP_TILE_SIZE_M, WARP_TILE_SIZE_N, 
             WMMA_TILE_PER_WARP_M, WMMA_TILE_PER_WARP_N, WMMA_TILE_PER_WARP_K,

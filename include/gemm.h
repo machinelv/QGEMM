@@ -41,4 +41,16 @@ void GEMM_kernel_v3(const typeIn* A, size_t ldA,
     typeOut* C, size_t ldC,
     size_t M, size_t N, size_t K);
 
+template<typename typeIn, typename typeOut>
+void GEMM_kernel_v4(const typeIn* A, size_t ldA,
+    const typeIn* B, size_t ldB, 
+    typeOut* C, size_t ldC,
+    size_t M, size_t N, size_t K);
+
+template<typename typeIn, typename typeOut>
+void GEMM_kernel_v5(const typeIn* A, size_t ldA,
+    const typeIn* B, size_t ldB, 
+    typeOut* C, size_t ldC,
+    size_t M, size_t N, size_t K);
+
 #endif

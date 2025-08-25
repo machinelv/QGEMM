@@ -79,6 +79,13 @@ Thread block swizzling is aimed to increase L2 locality.
 Every thread needs to get an coordinate to fetch the shared memory. 
 
 
+
+## Multi Stage
+
+In this stage, we further optimize the GEMM kernel by introducing a multi-stage execution model. This model breaks down the computation into smaller, more manageable stages, allowing for better resource utilization and improved performance.
+
+
+
 # GEMM
 
 ## SM80 Normal BF16 GEMM Kernel
@@ -129,6 +136,39 @@ The performance is:
 The V2 version 
 
 
+### V3
+
+In this step, we add swizzling in two levels: thread-block swizzle and warp-level swizzle. 
+
+
+Because of the layout of the matrix B, we can't use the same swizzling strategy as for matrix A. So we can't realize a warp-level swizzle.
+
+The performance is still so bad.
+
+| Problem Size | GEMM_kernel_v1 | GEMM_kernel_v2 | GEMM_kernel_v3 | cutlass_gemm_test | reference_cublas |
+| --- | --- | --- | --- | --- | --- |
+| M=512, N=512, K=512 | 3.400 | 3.404 | 6.012 | 1.762 | 26.479 |
+| M=1024, N=512, K=2048 | 7.212 | 7.214 | 13.443 | 3.694 | 89.622 |
+| M=2048, N=2048, K=2048 | 20.782 | 20.813 | 32.042 | 10.381 | 119.581 |
+| M=4096, N=4096, K=4096 | 34.711 | 34.738 | 65.955 | 12.750 | 205.855 |
+| M=8192, N=4096, K=2048 | 36.674 | 36.741 | 66.705 | 17.300 | 249.661 |
+| M=8192, N=4096, K=4096 | 36.578 | 36.574 | 67.117 | 17.335 | 268.893 |
+
+| Problem Size | GEMM_kernel_v1 | GEMM_kernel_v2 | GEMM_kernel_v3 | cutlass_gemm_test | reference_cublas |
+| --- | --- | --- | --- | --- | --- |
+| M=512, N=512, K=512 | 0.13x | 0.13x | 0.23x | 0.07x | 1.00x |
+| M=1024, N=512, K=2048 | 0.08x | 0.08x | 0.15x | 0.04x | 1.00x |
+| M=2048, N=2048, K=2048 | 0.17x | 0.17x | 0.27x | 0.09x | 1.00x |
+| M=4096, N=4096, K=4096 | 0.17x | 0.17x | 0.32x | 0.06x | 1.00x |
+| M=8192, N=4096, K=2048 | 0.15x | 0.15x | 0.27x | 0.07x | 1.00x |
+| M=8192, N=4096, K=4096 | 0.14x | 0.14x | 0.25x | 0.06x | 1.00x |
+
+
+### V4
+
+In this 
+
+
 ## SM89 Normal BF16 GEMM Kernel
 
 ### V2
@@ -156,29 +196,3 @@ Speedup
 | M=8192, N=4096, K=2048 | 0.50x | 0.65x | 0.78x | 0.26x | 1.00x |
 
 
-### V3
-
-In this step, we add swizzling in two levels: thread-block swizzle and warp-level swizzle. 
-
-
-Because of the layout of the matrix B, we can't use the same swizzling strategy as for matrix A. So we can't realize a warp-level swizzle.
-
-The performance is still so bad.
-
-| Problem Size | GEMM_kernel_v1 | GEMM_kernel_v2 | GEMM_kernel_v3 | cutlass_gemm_test | reference_cublas |
-| --- | --- | --- | --- | --- | --- |
-| M=512, N=512, K=512 | 3.400 | 3.404 | 6.012 | 1.762 | 26.479 |
-| M=1024, N=512, K=2048 | 7.212 | 7.214 | 13.443 | 3.694 | 89.622 |
-| M=2048, N=2048, K=2048 | 20.782 | 20.813 | 32.042 | 10.381 | 119.581 |
-| M=4096, N=4096, K=4096 | 34.711 | 34.738 | 65.955 | 12.750 | 205.855 |
-| M=8192, N=4096, K=2048 | 36.674 | 36.741 | 66.705 | 17.300 | 249.661 |
-| M=8192, N=4096, K=4096 | 36.578 | 36.574 | 67.117 | 17.335 | 268.893 |
-
-| Problem Size | GEMM_kernel_v1 | GEMM_kernel_v2 | GEMM_kernel_v3 | cutlass_gemm_test | reference_cublas |
-| --- | --- | --- | --- | --- | --- |
-| M=512, N=512, K=512 | 0.13x | 0.13x | 0.23x | 0.07x | 1.00x |
-| M=1024, N=512, K=2048 | 0.08x | 0.08x | 0.15x | 0.04x | 1.00x |
-| M=2048, N=2048, K=2048 | 0.17x | 0.17x | 0.27x | 0.09x | 1.00x |
-| M=4096, N=4096, K=4096 | 0.17x | 0.17x | 0.32x | 0.06x | 1.00x |
-| M=8192, N=4096, K=2048 | 0.15x | 0.15x | 0.27x | 0.07x | 1.00x |
-| M=8192, N=4096, K=4096 | 0.14x | 0.14x | 0.25x | 0.06x | 1.00x |

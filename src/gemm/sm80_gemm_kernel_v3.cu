@@ -172,7 +172,7 @@ inline __device__ void process_data_from_shared_memory_using_wmma_bf16_swizzle(
             size_t block_tile_wmma_tile_m_idx{warp_m_id * WARP_TILE_SIZE_M + wmma_tile_idx_m * WMMA_TILE_SIZE_M};
             size_t m_idx = block_tile_wmma_tile_m_idx + trunk_row_idx_A ;
             size_t k_idx = (trunk_col_idx_A + wmma_tile_idx_k * trunk_per_warp_k);
-            k_idx ^= m_idx;
+            // k_idx ^= m_idx;
             size_t smem_index = k_idx * element_per_trunk + m_idx * BLOCK_TILE_SIZE_K;
             // size_t smem_index = (trunk_col_idx_A + wmma_tile_idx_k * trunk_per_warp_k) * element_per_trunk + trunk_row_idx_A * BLOCK_TILE_SIZE_K;
             // shared_memory_swizzle_coordinate<get_log_2(trunk_per_cacheline_k), get_log_2(trunk_size_bits), get_log_2(WMMA_TILE_SIZE_M)>(smem_index);
@@ -212,7 +212,6 @@ inline __device__ void process_data_from_shared_memory_using_wmma_bf16_swizzle(
             }
         }
     }
-    __syncthreads();
 }
 }
 

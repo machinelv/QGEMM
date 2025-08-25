@@ -229,7 +229,7 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_transposed_
         T* A_block_tile, T* B_T_block_tile,
         size_t M, size_t N, size_t K,
         size_t block_tile_start_m, size_t block_tile_start_n, size_t block_tile_start_k,
-        size_t thread_id
+        size_t thread_id, const size_t pipeline_id = 0
     )
 {
     constexpr size_t VECTOR_SIZE_BYTE{sizeof(VECTOR_TYPE)};
@@ -255,7 +255,7 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_transposed_
         size_t A_M_id{A_block_tile_M_id + block_tile_start_m};
         size_t A_K_id{A_block_tile_K_id + block_tile_start_k};
 
-        uint32_t smem_addr = __cvta_generic_to_shared(&A_block_tile[A_block_tile_K_id + A_block_tile_M_id * BLOCK_TILE_SIZE_K]);
+        uint32_t smem_addr = __cvta_generic_to_shared(&A_block_tile[A_block_tile_K_id + A_block_tile_M_id * BLOCK_TILE_SIZE_K + pipeline_id * BLOCK_TILE_SIZE_K * BLOCK_TILE_SIZE_M]);
         auto gmem_addr = (&A[A_M_id * K + A_K_id]);
         copy_cg_async(smem_addr, gmem_addr, VECTOR_SIZE_BYTE);
     }
@@ -272,7 +272,7 @@ inline __device__ void load_data_from_global_memory_to_shared_memory_transposed_
         B_row_vector_vals.vec = *reinterpret_cast<VECTOR_TYPE const*>(&B[B_N_id + B_K_id * N]);
         for (size_t i = 0; i < NUM_VECTOR_UNITS; ++i) {
             if (B_block_tile_K_id < BLOCK_TILE_SIZE_K && B_block_tile_N_id < BLOCK_TILE_SIZE_N) {
-                B_T_block_tile[(B_block_tile_K_id) + (B_block_tile_N_id + i) * BLOCK_TILE_SIZE_K] = B_row_vector_vals.elements[i];
+                B_T_block_tile[(B_block_tile_K_id) + (B_block_tile_N_id + i) * BLOCK_TILE_SIZE_K + pipeline_id * BLOCK_TILE_SIZE_K * BLOCK_TILE_SIZE_N] = B_row_vector_vals.elements[i];
             }
         }
     }

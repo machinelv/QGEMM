@@ -37,26 +37,26 @@ inline __device__ void process_data_from_shared_memory_using_wmma_bf16(
 {
 
     // process wmma tile
-    #pragma unroll (WMMA_TILE_PER_WARP_K)
+    #pragma unroll(WMMA_TILE_PER_WARP_K)
     for (size_t wmma_tile_idx_k{0U}; wmma_tile_idx_k < WMMA_TILE_PER_WARP_K; ++wmma_tile_idx_k) {
         // Load data from shared memory to register
         size_t block_tile_wmma_tile_k_idx{wmma_tile_idx_k * WMMA_TILE_SIZE_K};
         // Load A and B matrices from shared memory to registers
-        #pragma unroll (WMMA_TILE_PER_WARP_M)
+        #pragma unroll(WMMA_TILE_PER_WARP_M)
         for (size_t wmma_tile_idx_m{0U}; wmma_tile_idx_m < WMMA_TILE_PER_WARP_M; ++wmma_tile_idx_m) {
             size_t block_tile_wmma_tile_m_idx{warp_m_id * WARP_TILE_SIZE_M + wmma_tile_idx_m * WMMA_TILE_SIZE_M};
             wmma::load_matrix_sync(a_frag[wmma_tile_idx_m], &A_T_shared_block_tile[block_tile_wmma_tile_k_idx * BLOCK_TILE_SIZE_M + block_tile_wmma_tile_m_idx], BLOCK_TILE_SIZE_M);
         }
-        #pragma unroll (WMMA_TILE_PER_WARP_N)
+        #pragma unroll(WMMA_TILE_PER_WARP_N)
         for (size_t wmma_tile_idx_n{0U}; wmma_tile_idx_n < WMMA_TILE_PER_WARP_N; ++wmma_tile_idx_n) {
             size_t block_tile_wmma_tile_n_idx{warp_n_id * WARP_TILE_SIZE_N + wmma_tile_idx_n * WMMA_TILE_SIZE_N};
             wmma::load_matrix_sync(b_frag[wmma_tile_idx_n], &B_shared_block_tile[block_tile_wmma_tile_k_idx * BLOCK_TILE_SIZE_N + block_tile_wmma_tile_n_idx], BLOCK_TILE_SIZE_N);
         }
 
         // Compute the acc_frag_fp32
-        #pragma unroll (WMMA_TILE_PER_WARP_M)
+        #pragma unroll(WMMA_TILE_PER_WARP_M)
         for (size_t wmma_tile_idx_m{0U}; wmma_tile_idx_m < WMMA_TILE_PER_WARP_M; ++wmma_tile_idx_m) {
-            #pragma unroll (WMMA_TILE_PER_WARP_N)
+            #pragma unroll(WMMA_TILE_PER_WARP_N)
             for (size_t wmma_tile_idx_n{0U}; wmma_tile_idx_n < WMMA_TILE_PER_WARP_N; ++wmma_tile_idx_n) {
                 wmma::mma_sync(acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n], a_frag[wmma_tile_idx_m], b_frag[wmma_tile_idx_n], acc_frag_fp32[wmma_tile_idx_m][wmma_tile_idx_n]);
             }
@@ -126,9 +126,9 @@ __global__ void GEMM_kernel_bf16(const __nv_bfloat16* A, size_t ldA, const __nv_
     __nv_bfloat16* B_block_tile = &shared_memory[BLOCK_TILE_SIZE_K * BLOCK_TILE_SIZE_M];
 
     wmma::fragment<wmma::accumulator, WMMA_TILE_SIZE_M, WMMA_TILE_SIZE_N, WMMA_TILE_SIZE_K, float> acc_frag_fp32[WMMA_TILE_PER_WARP_M][WMMA_TILE_PER_WARP_N];
-    #pragma unroll (WMMA_TILE_PER_WARP_M)
+    #pragma unroll(WMMA_TILE_PER_WARP_M)
     for (size_t wmma_tile_m_idx{0U}; wmma_tile_m_idx < WMMA_TILE_PER_WARP_M; ++wmma_tile_m_idx){
-        #pragma unroll (WMMA_TILE_PER_WARP_N)
+        #pragma unroll(WMMA_TILE_PER_WARP_N)
         for (size_t wmma_tile_n_idx{0U}; wmma_tile_n_idx < WMMA_TILE_PER_WARP_N;++wmma_tile_n_idx) {
             wmma::fill_fragment(acc_frag_fp32[wmma_tile_m_idx][wmma_tile_n_idx], static_cast<float>(0));
         }
@@ -158,9 +158,9 @@ __global__ void GEMM_kernel_bf16(const __nv_bfloat16* A, size_t ldA, const __nv_
 
 
     // Store the result to global memory
-    #pragma unroll (WMMA_TILE_PER_WARP_M)
+    #pragma unroll(WMMA_TILE_PER_WARP_M)
     for (size_t wmma_tile_idx_m{0U}; wmma_tile_idx_m < WMMA_TILE_PER_WARP_M; ++wmma_tile_idx_m) {
-        #pragma unroll (WMMA_TILE_PER_WARP_N)
+        #pragma unroll(WMMA_TILE_PER_WARP_N)
         for (size_t wmma_tile_idx_n{0U}; wmma_tile_idx_n < WMMA_TILE_PER_WARP_N; ++wmma_tile_idx_n) {
             size_t M_idx = block_tile_start_m + warp_m_id * WARP_TILE_SIZE_M + wmma_tile_idx_m * WMMA_TILE_SIZE_M;
             size_t N_idx = block_tile_start_n + warp_n_id * WARP_TILE_SIZE_N + wmma_tile_idx_n * WMMA_TILE_SIZE_N;

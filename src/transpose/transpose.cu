@@ -67,9 +67,9 @@ __global__ void matrix_tranpose_v1(const __nv_bfloat16* idata, __nv_bfloat16* od
     const size_t warp_tile_start_m = warp_id_m * WARP_TILE_SIZE_M;
     const size_t warp_tile_start_n = warp_id_n * WARP_TILE_SIZE_N;
 
-    #pragma unroll (MAT_TILE_PER_WARP_M)
+    #pragma unroll(MAT_TILE_PER_WARP_M)
     for (size_t warp_tile_m{0}; warp_tile_m < MAT_TILE_PER_WARP_M; ++warp_tile_m) {
-        #pragma unroll (MAT_TILE_PER_WARP_N)
+        #pragma unroll(MAT_TILE_PER_WARP_N)
         for (size_t warp_tile_n{0}; warp_tile_n < MAT_TILE_PER_WARP_N; ++warp_tile_n) {
             size_t src_m = warp_tile_start_m + warp_tile_m * MAT_TILE_SIZE_M;
             size_t src_n = warp_tile_start_n + warp_tile_n * MAT_TILE_SIZE_N;
@@ -80,9 +80,9 @@ __global__ void matrix_tranpose_v1(const __nv_bfloat16* idata, __nv_bfloat16* od
 
 
     // store the transposed matrix from register to shared memory
-    #pragma unroll (MAT_TILE_PER_WARP_N)
+    #pragma unroll(MAT_TILE_PER_WARP_N)
         for (size_t warp_tile_n{0}; warp_tile_n < MAT_TILE_PER_WARP_N; ++warp_tile_n) {
-        #pragma unroll (MAT_TILE_PER_WARP_M)
+        #pragma unroll(MAT_TILE_PER_WARP_M)
         for (size_t warp_tile_m{0}; warp_tile_m < MAT_TILE_PER_WARP_M; ++warp_tile_m) {
             size_t src_m = warp_tile_start_m + warp_tile_m * MAT_TILE_SIZE_M;
             size_t src_n = warp_tile_start_n + warp_tile_n * MAT_TILE_SIZE_N;

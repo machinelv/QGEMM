@@ -100,7 +100,7 @@ def generate_visualization(test_data):
         pos_to_thread_reg = create_layout_map(thread_data)
         
         # 创建16x16表格
-        fig, ax = plt.subplots(figsize=(16, 8))
+        fig, ax = plt.subplots(figsize=(32, 16))
         
         table_data = []
         cell_colors = []

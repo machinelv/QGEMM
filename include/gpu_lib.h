@@ -8,6 +8,13 @@
 
 namespace wmma = nvcuda::wmma;
 
+#if CUDA_ARCH >= 90
+#define STMATRIX_BF16_X4(addr, R0, R1, R2, R3)                                             \
+    asm volatile("stmatrix.sync.aligned.m8n8.x4.shared.b16 [%4], {%0, %1, %2, %3};\n" \
+                 :: "r"(R0), "r"(R1), "r"(R2), "r"(R3)   \
+                 "r"(smem_addr)    )    
+#endif
+
 #define LDMATRIX_BF16_X4(R0, R1, R2, R3, addr)                                             \
     asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0, %1, %2, %3}, [%4];\n" \
                  : "=r"(R0), "=r"(R1), "=r"(R2), "=r"(R3)                             \
@@ -31,6 +38,11 @@ namespace wmma = nvcuda::wmma;
                 :: "r"(smem_ptr),                               \
                 "l"(gmem_ptr),                                  \
                 "n"(BTYES));
+
+#define MOVMAT(dst, src) asm volatile("movmatrix.sync.aligned.m8n8.trans.b16 %0, %1;" \
+            : "=r"(dst) \
+            : "r"(src));
+
 
 #define copy_async_commit                           \
     asm volatile("cp.async.commit_group;\n" ::);

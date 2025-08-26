@@ -100,7 +100,7 @@ def generate_visualization(test_data):
         pos_to_thread_reg = create_layout_map(thread_data)
         
         # 创建16x16表格
-        fig, ax = plt.subplots(figsize=(32, 16))
+        fig, ax = plt.subplots(figsize=(16, 8))
         
         table_data = []
         cell_colors = []
@@ -141,7 +141,7 @@ def generate_visualization(test_data):
         
         # 保存图片
         safe_filename = re.sub(r'[^\w\-_\.]', '_', instruction)
-        img_path = f"layout_{i+1}_{safe_filename}.png"
+        img_path = f"./output/{safe_filename}.png"
         plt.savefig(img_path, bbox_inches="tight", dpi=150)
         plt.close()
         
@@ -150,13 +150,15 @@ def generate_visualization(test_data):
 def generate_markdown_report(test_data):
     """生成markdown格式的报告以检查解析结果"""
     markdown_content = []
-    markdown_content.append("# LDMATRIX Layout Analysis Report\n")
+    markdown_content.append("# Layout Analysis Report\n")
     markdown_content.append(f"Generated on: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
     markdown_content.append(f"Total instructions analyzed: {len(test_data)}\n")
     
+    intruction_name = ""
     for i, test in enumerate(test_data, 1):
         instruction = test['instruction']
         thread_data = test['thread_data']
+        intruction_name = instruction.split(".")[0]
         
         markdown_content.append(f"\n## {i}. {instruction}\n")
         
@@ -211,7 +213,7 @@ def generate_markdown_report(test_data):
         markdown_content.append("\n---")
     
     # 写入markdown文件
-    markdown_filename = "layout_analysis_report.md"
+    markdown_filename = f"./output/report_{intruction_name}.md"
     with open(markdown_filename, 'w', encoding='utf-8') as f:
         f.write('\n'.join(markdown_content))
     

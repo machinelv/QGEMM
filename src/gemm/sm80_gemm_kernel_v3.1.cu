@@ -19,16 +19,14 @@ using namespace gemm_kernel;
 using WMMA_BF16_Config = gemm_kernel::sm80::WMMA_BF16_Config;
 
 namespace {
-
-
 template <  size_t BLOCK_TILE_SIZE_M, size_t BLOCK_TILE_SIZE_N, size_t BLOCK_TILE_SIZE_K,
             size_t WARP_TILE_SIZE_M, size_t WARP_TILE_SIZE_N, 
             size_t WMMA_TILE_PER_WARP_M, size_t WMMA_TILE_PER_WARP_N, size_t WMMA_TILE_PER_WARP_K,
             size_t WMMA_TILE_SIZE_M, size_t WMMA_TILE_SIZE_N, size_t WMMA_TILE_SIZE_K,
-            size_t WMMA_REG_PER_THREAD_A, size_t WMMA_REG_PER_THREAD_B, size_t WMMA_REG_PER_THREAD_C, size_t PADDING = 0>
-inline __device__ void process_data_from_shared_memory_using_wmma_bf16(
+            size_t WMMA_REG_PER_THREAD_A, size_t WMMA_REG_PER_THREAD_B, size_t WMMA_REG_PER_THREAD_C>
+inline __device__ void process_data_from_shared_memory_using_wmma_bf16_transposed(
         const __nv_bfloat16* A_shared_block_tile,
-        const __nv_bfloat16* B_shared_block_tile,
+        const __nv_bfloat16* B_T_shared_block_tile,
         uint32_t a_frag[WMMA_TILE_PER_WARP_M][WMMA_REG_PER_THREAD_A],
         uint32_t b_frag[WMMA_TILE_PER_WARP_N][WMMA_REG_PER_THREAD_B],
         uint32_t acc_frag_fp32[WMMA_TILE_PER_WARP_M][WMMA_TILE_PER_WARP_N][WMMA_REG_PER_THREAD_C],
@@ -53,20 +51,19 @@ inline __device__ void process_data_from_shared_memory_using_wmma_bf16(
     
     constexpr size_t trunk_size_bits = 128;
     constexpr size_t element_per_trunk = trunk_size_bits / 8 / sizeof(__nv_bfloat16);
-    constexpr size_t trunk_per_line_k = (BLOCK_TILE_SIZE_K + PADDING) / element_per_trunk;
-    constexpr size_t trunk_per_line_n = (BLOCK_TILE_SIZE_N + PADDING) / element_per_trunk;
+    constexpr size_t trunk_per_cacheline_k = BLOCK_TILE_SIZE_K / element_per_trunk;
+    // constexpr size_t trunk_per_cacheline_n = BLOCK_TILE_SIZE_N / element_per_trunk;
 
     constexpr size_t trunk_per_warp_k = WMMA_TILE_SIZE_K / element_per_trunk;
     constexpr size_t trunk_per_warp_m = WMMA_TILE_SIZE_M;
-    constexpr size_t trunk_per_warp_n = WARP_TILE_SIZE_N / element_per_trunk;
-    constexpr size_t trunk_per_tile_n = WMMA_TILE_SIZE_N / element_per_trunk;
-
-
+    constexpr size_t trunk_per_warp_n = WMMA_TILE_SIZE_N;
+    // constexpr size_t trunk_per_warp_n = WMMA_TILE_SIZE_N;
+    
     size_t trunk_row_idx_A = lane_id % trunk_per_warp_m;
     size_t trunk_col_idx_A = lane_id / trunk_per_warp_m;
 
-    size_t trunk_row_idx_B = lane_id % WMMA_TILE_SIZE_K;
-    size_t trunk_col_idx_B = lane_id / WMMA_TILE_SIZE_K;
+    size_t trunk_row_idx_B = lane_id % trunk_per_warp_n;
+    size_t trunk_col_idx_B = lane_id / trunk_per_warp_n;
 
     // process wmma tile
     #pragma unroll(WMMA_TILE_PER_WARP_K)
@@ -78,13 +75,12 @@ inline __device__ void process_data_from_shared_memory_using_wmma_bf16(
         for (size_t wmma_tile_idx_m{0U}; wmma_tile_idx_m < WMMA_TILE_PER_WARP_M; ++wmma_tile_idx_m) {
             // A_shared_block_tile's row offset
             size_t block_tile_wmma_tile_m_idx{warp_m_id * WARP_TILE_SIZE_M + wmma_tile_idx_m * WMMA_TILE_SIZE_M};
-            size_t m_idx = block_tile_wmma_tile_m_idx + trunk_row_idx_A ;
-            size_t k_idx = (trunk_col_idx_A + wmma_tile_idx_k * trunk_per_warp_k);
-            // k_idx ^= m_idx;
-            size_t smem_index = k_idx * element_per_trunk + m_idx * (BLOCK_TILE_SIZE_K + PADDING);
-            // size_t smem_index = (trunk_col_idx_A + wmma_tile_idx_k * trunk_per_warp_k) * element_per_trunk + trunk_row_idx_A * BLOCK_TILE_SIZE_K;
-            // shared_memory_swizzle_coordinate<get_log_2(trunk_per_line_k), get_log_2(trunk_size_bits), get_log_2(WMMA_TILE_SIZE_M)>(smem_index);
-            uint32_t smem_addr = __cvta_generic_to_shared(&A_shared_block_tile[smem_index]);
+            size_t col_id = trunk_col_idx_A + wmma_tile_idx_k * trunk_per_warp_k;
+            size_t row_id = trunk_row_idx_A;
+            col_id ^= row_id;
+            size_t smem_index = col_id * element_per_trunk + row_id * BLOCK_TILE_SIZE_K;
+            // shared_memory_swizzle_coordinate<get_log_2(trunk_per_cacheline_k), get_log_2(trunk_size_bits), get_log_2(WMMA_TILE_SIZE_M)>(smem_index);
+            uint32_t smem_addr = __cvta_generic_to_shared(&A_shared_block_tile[block_tile_wmma_tile_m_idx * BLOCK_TILE_SIZE_K + smem_index]);
             LDMATRIX_BF16_X4(a_frag[wmma_tile_idx_m][0], a_frag[wmma_tile_idx_m][1], a_frag[wmma_tile_idx_m][2], a_frag[wmma_tile_idx_m][3], smem_addr);
         }
 
@@ -92,14 +88,15 @@ inline __device__ void process_data_from_shared_memory_using_wmma_bf16(
         for (size_t wmma_tile_idx_n{0U}; wmma_tile_idx_n < WMMA_TILE_PER_WARP_N; ++wmma_tile_idx_n) {
             // B_shared_block_tile's column offset
             size_t block_tile_wmma_tile_n_idx{warp_n_id * WARP_TILE_SIZE_N + wmma_tile_idx_n * WMMA_TILE_SIZE_N};
-            size_t n_idx = block_tile_wmma_tile_n_idx + (trunk_col_idx_B) * element_per_trunk;
-            size_t k_idx = (trunk_row_idx_B + wmma_tile_idx_k * WMMA_TILE_SIZE_K);
-            // k_idx ^= trunk_col_idx_B;
-            size_t smem_index = n_idx + k_idx * (BLOCK_TILE_SIZE_N + PADDING);
-            // shared_memory_swizzle_coordinate<get_log_2(trunk_per_line_n), get_log_2(trunk_size_bits), get_log_2(WMMA_TILE_SIZE_N)>(smem_index);
-            uint32_t smem_addr = __cvta_generic_to_shared(&B_shared_block_tile[smem_index]);
-            // The ldmatrix will transpose it self, there is no need to transpose
-            LDMATRIX_BF16_TRANSPOSE_X4(b_frag[wmma_tile_idx_n][0], b_frag[wmma_tile_idx_n][1], b_frag[wmma_tile_idx_n][2], b_frag[wmma_tile_idx_n][3], smem_addr);
+            size_t col_id = trunk_col_idx_B + wmma_tile_idx_k * trunk_per_warp_k;
+            size_t row_id = trunk_row_idx_B;
+            col_id ^= row_id;
+            size_t smem_index = col_id * element_per_trunk + row_id * BLOCK_TILE_SIZE_K;
+            // shared_memory_swizzle_coordinate<get_log_2(trunk_per_cacheline_k), get_log_2(trunk_size_bits), get_log_2(WMMA_TILE_SIZE_N)>(smem_index);
+            // B_T_shared_block_tile[BLOCK_TILE_SIZE_N][BLOCK_TILE_SIZE_K]
+            uint32_t smem_addr = __cvta_generic_to_shared(&B_T_shared_block_tile[block_tile_wmma_tile_n_idx * BLOCK_TILE_SIZE_K + smem_index]);
+            // There is a transpose between 
+            LDMATRIX_BF16_X4(b_frag[wmma_tile_idx_n][0], b_frag[wmma_tile_idx_n][2], b_frag[wmma_tile_idx_n][1], b_frag[wmma_tile_idx_n][3], smem_addr);
         }
 
         // Compute the acc_frag_fp32
@@ -122,8 +119,6 @@ inline __device__ void process_data_from_shared_memory_using_wmma_bf16(
     }
 }
 }
-
-
 namespace gemm_kernel{
 namespace sm80{
 
@@ -131,7 +126,7 @@ template <typename T_OUTPUT, size_t BLOCK_TILE_SIZE_M, size_t BLOCK_TILE_SIZE_N,
           size_t WARP_TILE_SIZE_M, size_t WARP_TILE_SIZE_N, 
           size_t WMMA_TILE_SIZE_M, size_t WMMA_TILE_SIZE_N, size_t WMMA_TILE_SIZE_K,
           size_t GROUP_SIZE_M, size_t PADDING = 0>
-__global__ void GEMM_kernel_bf16_v3(const __nv_bfloat16* A, size_t ldA, const __nv_bfloat16* B, size_t ldB,
+__global__ void GEMM_kernel_bf16_v3_1(const __nv_bfloat16* A, size_t ldA, const __nv_bfloat16* B, size_t ldB,
                        T_OUTPUT* C, size_t ldC, size_t M, size_t N, size_t K)
 {
     static_assert(BLOCK_TILE_SIZE_M % WARP_TILE_SIZE_M == 0, 
@@ -184,7 +179,7 @@ __global__ void GEMM_kernel_bf16_v3(const __nv_bfloat16* A, size_t ldA, const __
     }
 
     // __shared__ __nv_bfloat16 A_block_tile[BLOCK_TILE_SIZE_M][BLOCK_TILE_SIZE_K];
-    // __shared__ __nv_bfloat16 B_shared_memory[BLOCK_TILE_SIZE_K][BLOCK_TILE_SIZE_N];
+    // __shared__ __nv_bfloat16 B_shared_memory[BLOCK_TILE_SIZE_N][BLOCK_TILE_SIZE_K];
     // __nv_bfloat16* A_block_tile = &A_block_tile[0][0];
     // __nv_bfloat16* B_T_block_tile = &B_shared_memory[0][0];
 
@@ -219,20 +214,20 @@ __global__ void GEMM_kernel_bf16_v3(const __nv_bfloat16* A, size_t ldA, const __
 
         size_t block_tile_start_k = block_id_k;
         // load A and B matrices from global memory to shared memory
-        load_data_from_global_memory_to_shared_memory_async
-            <__nv_bfloat16, BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K, THREAD_NUM, float4, PADDING>
+        load_data_from_global_memory_to_shared_memory_transposed_async
+            <__nv_bfloat16, BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K, THREAD_NUM, float4>
             (A, B, A_block_tile, B_block_tile, M, N, K,
              block_tile_start_m, block_tile_start_n, block_tile_start_k, thread_id);
         cp_async_wait_all;
         __syncthreads();
 
         // load a_frag and b_frag from shared memory to registers and compute
-        process_data_from_shared_memory_using_wmma_bf16<
+        process_data_from_shared_memory_using_wmma_bf16_transposed<
             BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K,
             WARP_TILE_SIZE_M, WARP_TILE_SIZE_N, 
             WMMA_TILE_PER_WARP_M, WMMA_TILE_PER_WARP_N, WMMA_TILE_PER_WARP_K,
             WMMA_TILE_SIZE_M, WMMA_TILE_SIZE_N, WMMA_TILE_SIZE_K, 
-            WMMA_REG_PER_THREAD_A, WMMA_REG_PER_THREAD_B, WMMA_REG_PER_THREAD_C, PADDING>
+            WMMA_REG_PER_THREAD_A, WMMA_REG_PER_THREAD_B, WMMA_REG_PER_THREAD_C>
             (A_block_tile, B_block_tile, a_frag, b_frag, acc_frag_fp32, M, N, K, warp_m_id, warp_n_id);
         __syncthreads();
     }
@@ -276,53 +271,55 @@ __global__ void GEMM_kernel_bf16_v3(const __nv_bfloat16* A, size_t ldA, const __
  * All matrix are stored in row-major order.
  */
 template<size_t BLOCK_TILE_SIZE_M, size_t BLOCK_TILE_SIZE_N, size_t BLOCK_TILE_SIZE_K, size_t GROUP_SIZE_M>
-void launch_bf16_kernel_v3(const __nv_bfloat16* A, size_t ldA, const __nv_bfloat16* B, size_t ldB,
+void launch_bf16_kernel_v3_1(const __nv_bfloat16* A, size_t ldA, const __nv_bfloat16* B, size_t ldB,
                        float* C, size_t ldC, size_t M, size_t N, size_t K) 
 {
+    // __nv_bfloat16 *B_t;
+    // cudaMalloc(&B_t, K * N * sizeof(__nv_bfloat16));
+    // matrix_transpose(B, B_t, N, K);
     constexpr size_t WARP_NUM_M{BLOCK_TILE_SIZE_M / WMMA_BF16_Config::WARP_TILE_SIZE_M};
     constexpr size_t WARP_NUM_N{BLOCK_TILE_SIZE_N / WMMA_BF16_Config::WARP_TILE_SIZE_N};
     constexpr size_t WARP_NUM{WARP_NUM_M * WARP_NUM_N};
     constexpr size_t THREAD_NUM{WARP_NUM * WARP_SIZE};
-    constexpr size_t PADDING = 8;
+    constexpr size_t PADDING = 0;
     constexpr size_t SHARED_MEM_SIZE = (BLOCK_TILE_SIZE_K * (BLOCK_TILE_SIZE_N + PADDING) + (BLOCK_TILE_SIZE_K + PADDING) * BLOCK_TILE_SIZE_M) * sizeof(__nv_bfloat16);
 
-    GEMM_kernel_bf16_v3<float, BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K, 
+    GEMM_kernel_bf16_v3_1<float, BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K, 
                     WMMA_BF16_Config::WARP_TILE_SIZE_M, WMMA_BF16_Config::WARP_TILE_SIZE_N, 
                     WMMA_BF16_Config::WMMA_TILE_SIZE_M, WMMA_BF16_Config::WMMA_TILE_SIZE_N, WMMA_BF16_Config::WMMA_TILE_SIZE_K, 
                     GROUP_SIZE_M, PADDING>
         <<<dim3((N + BLOCK_TILE_SIZE_N - 1) / BLOCK_TILE_SIZE_N, (M + BLOCK_TILE_SIZE_M - 1) / BLOCK_TILE_SIZE_M, 1),
-           dim3(THREAD_NUM), SHARED_MEM_SIZE>>>(A, ldA, B, ldB, C, ldC, M, N, K);
+           dim3(THREAD_NUM), SHARED_MEM_SIZE>>>(A, ldA, B, K, C, ldC, M, N, K);
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
         // Handle error
         std::cerr << "CUDA kernel launch error: " << cudaGetErrorString(err) << std::endl;
     }
-
+    // cudaFree(B_t);
 }
 }           // namespace sm80
 }           // namespace gemm_kernel
 
 #if CUDA_ARCH == 80
 template<typename typeIn, typename typeOut>
-void GEMM_kernel_v3(const typeIn* A, size_t ldA,
+void GEMM_kernel_v3_1(const typeIn* A, size_t ldA,
                     const typeIn* B, size_t ldB, 
                     typeOut* C, size_t ldC,
                     size_t M, size_t N, size_t K);
 
 template<>
-void GEMM_kernel_v3<__nv_bfloat16, float>(const __nv_bfloat16* A, size_t ldA,
+void GEMM_kernel_v3_1<__nv_bfloat16, float>(const __nv_bfloat16* A, size_t ldA,
                     const __nv_bfloat16* B, size_t ldB, 
                     float* C, size_t ldC,
                     size_t M, size_t N, size_t K)
 {
-    
     // Implementation for __nv_bfloat16 - call launch function with constants
     constexpr GEMM_Config config = sm80::config_128_128_64_1_4;
-    sm80::launch_bf16_kernel_v3<config.BLOCK_TILE_SIZE_M, config.BLOCK_TILE_SIZE_N, config.BLOCK_TILE_SIZE_K, config.GROUP_SIZE_M>(A, ldA, B, ldB, C, ldC, M, N, K);
+    sm80::launch_bf16_kernel_v3_1<config.BLOCK_TILE_SIZE_M, config.BLOCK_TILE_SIZE_N, config.BLOCK_TILE_SIZE_K, config.GROUP_SIZE_M>(A, ldA, B, ldB, C, ldC, M, N, K);
 }
 
 // Explicit template instantiation
-template void GEMM_kernel_v3<__nv_bfloat16, float>(const __nv_bfloat16*, size_t, const __nv_bfloat16*, size_t, float*, size_t, size_t, size_t, size_t);
+template void GEMM_kernel_v3_1<__nv_bfloat16, float>(const __nv_bfloat16*, size_t, const __nv_bfloat16*, size_t, float*, size_t, size_t, size_t, size_t);
 
 #ifdef LOCAL_TEST
 
@@ -342,7 +339,7 @@ int main() {
 
     // Initialize A and B with some values
 
-    GEMM_kernel_v3(A, K, B, N, C, N, M, N, K);
+    GEMM_kernel_v3_1(A, K, B, N, C, N, M, N, K);
 
     // Cleanup
     cudaFree(A);

@@ -78,6 +78,7 @@ endif()
 set(GEMM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/gemm/test_cutlass_gemm.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/src/gemm/test_cublas_gemm.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/transpose/transpose.cu
 )
 
 # Use file(GLOB) to properly find the architecture-specific files
